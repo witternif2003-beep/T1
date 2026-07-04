@@ -5,11 +5,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Required for GitHub Actions native Pages deployment
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,37 +28,45 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # ── Build Solana Surge Scanner (T1 root) ──
-      - name: Install T1 dependencies
+      # ── Solana Surge Scanner (root) ──
+      - name: Install root dependencies
         run: npm ci
 
-      - name: Build T1 (Solana Surge Scanner)
+      - name: Build Solana scanner
         run: npm run build
 
-      # ── Build NYSE Stock Surge Detector (stock/) ──
+      # ── NYSE Stock Surge Detector (stock/) ──
       - name: Install stock/ dependencies
         run: npm ci
         working-directory: stock
 
-      - name: Build stock/ (NYSE Penny Surge Detector)
+      - name: Build NYSE stock app
         run: npm run build
         working-directory: stock
 
-      # ── Merge: place stock build inside Solana build output ──
+      # ── Merge outputs ──
       - name: Merge dist outputs
         run: |
           mkdir -p dist/stock
           cp -r stock/dist/. dist/stock/
-          echo "dist/ contents:"
-          ls dist/
-          echo "dist/stock/ contents:"
-          ls dist/stock/
+          ls dist/ && ls dist/stock/
 
-      # ── Deploy combined dist/ to gh-pages ──
-      - name: Deploy to gh-pages
-        uses: JamesIves/github-pages-deploy-action@v4
+      # ── Upload to GitHub Pages artifact (bypasses Jekyll entirely) ──
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          branch: gh-pages
-          folder: dist
-          clean: true
-          commit-message: "deploy: Solana + Stock from ${{ github.sha }}"
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
