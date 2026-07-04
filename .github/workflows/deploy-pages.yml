@@ -21,16 +21,37 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      # ── Build Solana Surge Scanner (T1 root) ──
+      - name: Install T1 dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build T1 (Solana Surge Scanner)
         run: npm run build
 
-      - name: Deploy to gh-pages branch
+      # ── Build NYSE Stock Surge Detector (stock/) ──
+      - name: Install stock/ dependencies
+        run: npm ci
+        working-directory: stock
+
+      - name: Build stock/ (NYSE Penny Surge Detector)
+        run: npm run build
+        working-directory: stock
+
+      # ── Merge: place stock build inside Solana build output ──
+      - name: Merge dist outputs
+        run: |
+          mkdir -p dist/stock
+          cp -r stock/dist/. dist/stock/
+          echo "dist/ contents:"
+          ls dist/
+          echo "dist/stock/ contents:"
+          ls dist/stock/
+
+      # ── Deploy combined dist/ to gh-pages ──
+      - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
           folder: dist
           clean: true
-          commit-message: "deploy: Vite build from ${{ github.sha }}"
+          commit-message: "deploy: Solana + Stock from ${{ github.sha }}"

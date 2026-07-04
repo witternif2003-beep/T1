@@ -1,5 +1,7 @@
 node_modules/
 dist/
+stock/node_modules/
+stock/dist/
 .env
 .env.local
 *.local
