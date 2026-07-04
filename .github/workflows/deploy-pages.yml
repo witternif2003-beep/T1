@@ -5,18 +5,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Required for GitHub Actions native Pages deployment
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,7 +22,7 @@ jobs:
           cache: 'npm'
 
       # ── Solana Surge Scanner (root) ──
-      - name: Install root dependencies
+      - name: Install T1 dependencies
         run: npm ci
 
       - name: Build Solana scanner
@@ -44,29 +37,26 @@ jobs:
         run: npm run build
         working-directory: stock
 
-      # ── Merge outputs ──
-      - name: Merge dist outputs
+      # ── Merge: place stock build inside Solana build output ──
+      - name: Merge dist outputs + ensure .nojekyll at root
         run: |
           mkdir -p dist/stock
           cp -r stock/dist/. dist/stock/
-          ls dist/ && ls dist/stock/
+          # Ensure root .nojekyll exists (bypasses GitHub Pages Jekyll runner)
+          touch dist/.nojekyll
+          echo "dist/ root:"
+          ls -la dist/
+          echo "dist/stock/:"
+          ls dist/stock/
 
-      # ── Upload to GitHub Pages artifact (bypasses Jekyll entirely) ──
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      # ── Push combined dist/ to gh-pages branch ──
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          branch: gh-pages
+          folder: dist
+          clean: true
+          commit-message: "deploy: Solana + Stock from ${{ github.sha }}"
+          git-config-name: github-actions[bot]
+          git-config-email: github-actions[bot]@users.noreply.github.com
+          force: true
