@@ -1,87 +1,82 @@
-# Solana Surge Scanner — NSA Admin Edition v3.1.0-nsa
+# Solana Surge Scanner — NSA Admin Edition
 
-Real-time Solana token surge scanner. **Live data only** — no mock data ever shown.
+**v3.1.0-nsa** · React 18 · TypeScript · Vite 6 · Three.js r170
+
+Real-time Solana token surge scanner built as a proper compiled Vite + React app — same architecture as Design Arena web apps.
 
 ---
 
 ## Live URL
 
-### Option A — GitHub Pages (30-second setup, your domain)
+> **https://witternif2003-beep.github.io/T1/**
+>
+> Auto-deploys on every push to `main` via GitHub Actions (build → deploy to `gh-pages`).
+>
+> **One-time setup:** Go to [Settings → Pages](https://github.com/witternif2003-beep/T1/settings/pages), set source to **"Deploy from a branch"** → `gh-pages` → `/(root)` → Save.
 
-1. Go to **https://github.com/witternif2003-beep/T1/settings/pages**
-2. Under **Source**, select **"Deploy from a branch"**
-3. Branch: **`gh-pages`** → Folder: **`/(root)`** → click **Save**
-4. Wait ~60 seconds → your app is live at:
+### One-click alternatives (custom subdomain)
 
-```
-https://witternif2003-beep.github.io/T1/
-```
-
-The `gh-pages` branch with the built app is already pushed and ready.
-
----
-
-### Option B — Netlify (free, custom subdomain, one-click)
-
-Click this button → log in → your app deploys automatically:
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/witternif2003-beep/T1)
-
-You'll get a URL like `https://[random-name].netlify.app`
+| Platform | Link |
+|---|---|
+| Netlify | [app.netlify.com/start/deploy?repository=…](https://app.netlify.com/start/deploy?repository=https://github.com/witternif2003-beep/T1) |
+| Vercel  | [vercel.com/new/clone?repository-url=…](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwitternif2003-beep%2FT1) |
 
 ---
 
-### Option C — Vercel (free, custom subdomain, one-click)
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwitternif2003-beep%2FT1)
-
-You'll get a URL like `https://[repo-name].vercel.app`
-
----
-
-### Option D — Surge.sh (free, fully custom domain)
+## Development
 
 ```bash
-npm install -g surge
-cd /path/to/this/repo
-surge . your-chosen-name.surge.sh
+npm install
+npm run dev       # vite dev server at localhost:5173
+npm run build     # tsc + vite production build → dist/
+npm run preview   # preview production build
 ```
 
----
+## Project Structure
+
+```
+src/
+├── main.tsx              # React entry point
+├── App.tsx               # Root component + state management
+├── index.css             # All styles (design tokens, layout, components)
+├── types.ts              # Shared TypeScript interfaces
+├── lib/
+│   ├── constants.ts      # Endpoints, proxies, URL builders
+│   ├── session.ts        # JWT-style ephemeral session token
+│   ├── rateLimit.ts      # 30 req/min client-side guard
+│   ├── formatters.ts     # USD, %, volume, time formatters
+│   ├── computeP1.ts      # P1 v3 score engine
+│   └── network.ts        # fetchWithRetry, fetchAllEndpoints, normalisePairs
+└── components/
+    ├── TokenCard.tsx      # Per-token card with P1 bars and links
+    ├── AdminPanel.tsx     # NSA admin diagnostics panel
+    ├── ErrorScreen.tsx    # Hard error state (no mock data)
+    └── Telemetry3D.tsx    # Three.js 3D volume chart + WebGL detection
+```
 
 ## Features
 
 | Feature | Details |
 |---|---|
-| **Live data only** | No mock/demo fallback — hard error screen when API unreachable |
-| **CSP meta tag** | Content-Security-Policy restricts fetch origins |
-| **JWT-style session token** | Ephemeral tab-scoped token (header.payload.sig) |
-| **Rate-limit awareness** | 30 req/min client guard with countdown |
-| **Fetch integrity checks** | Non-null object assertion on every API response |
-| **WebGL capability detection** | WebGL1/2 probe + GPU renderer string |
-| **Admin panel + live diagnostics** | SYSTEM · NETWORK · EVENT LOG with force-fetch |
-| **P1 v3 + momentum scoring** | 6-component weighted score with confidence dampening |
-| **3D telemetry** | Three.js r128 rotating bar chart with momentum rings |
+| **Live data only** | No mock/demo fallback — hard `ErrorScreen` when API unreachable |
+| **CSP meta tag** | Content-Security-Policy — no CDN script injection |
+| **JWT-style session** | Ephemeral `header.payload.sig`, tab-scoped |
+| **Rate-limit guard** | 30 req/min, countdown in admin panel |
+| **Fetch integrity** | Non-null object assertion on every response |
+| **WebGL detection** | WebGL1/2 probe + GPU renderer in diagnostics |
+| **Admin panel** | SYSTEM · NETWORK · EVENT LOG with force-fetch |
+| **P1 v3 engine** | 6-component score with momentum + confidence dampening |
+| **3D telemetry** | Three.js r170 rotating volume chart with momentum rings |
 
 ## P1 v3 Score Components
 
 | Component | Weight | Signal |
 |---|---|---|
-| Price Δ m5 | 25% | Magnitude + 1h directional alignment; late-signal penalty if 24h > 300% |
+| Price Δ m5 | 25% | Magnitude + 1h alignment; late penalty if 24h > 300% |
 | Volume Surge | 22% | m5/h1 ratio; 2× acceleration multiplier |
 | Liquidity | 18% | liq/mcap ratio |
-| TX Velocity | 15% | m5/h1 tx ratio; buy-pressure multipliers at 1.5× and 4× |
-| MC/FDV | 10% | Unlock pressure indicator |
+| TX Velocity | 15% | m5/h1 tx ratio; buy-pressure at 1.5× and 4× |
+| MC/FDV | 10% | Unlock pressure |
 | Momentum | 10% | Positive TF alignment (5m · 1h · 6h · 24h) |
 
-## Network Architecture
-
-```
-boosted → pairs → primary → gainers
-  ├── corsproxy.io fallback
-  └── allorigins.win fallback
-```
-
-10s timeout · 2 retries · 1.5s/4s backoff · 30 req/min client rate-limit
-
-Data: [DexScreener public API](https://dexscreener.com) · Not financial advice
+Data: [DexScreener public API](https://dexscreener.com) · 4 endpoints · 2 CORS proxy fallbacks · Not financial advice
