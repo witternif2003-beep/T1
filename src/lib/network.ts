@@ -22,7 +22,6 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<FetchResult>
       latency = Date.now() - t0;
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
       const data: unknown = await res.json();
-      // integrity: reject null / non-object
       if (typeof data !== 'object' || data === null) throw new Error('Non-object response');
       return { ok: true, data, latency };
     } catch (e) {
@@ -47,6 +46,89 @@ export function classifyError(err: string | undefined): string {
   return 'unknown';
 }
 
+/*
+ * Quality gate: a pair is "valid live data" when:
+ *  - chainId is solana
+ *  - priceUsd is a positive number (not '0', not missing)
+ *  - has at least some trading volume in the past 24h
+ */
+function isLivePair(p: Pair): boolean {
+  const price = parseFloat(p.priceUsd);
+  const vol24  = p.volume?.h24 ?? 0;
+  return (
+    p.chainId === 'solana' &&
+    !isNaN(price) &&
+    price > 0 &&
+    vol24 > 0
+  );
+}
+
+/* Normalise DexScreener pair object → typed Pair */
+function normalisePairObj(p: Record<string, unknown>): Pair {
+  // Shape from { pairs: [...] } — baseToken is already nested
+  const bt = p.baseToken as Record<string, unknown> | undefined;
+  return {
+    chainId:     String(p.chainId ?? 'unknown'),
+    dexId:       String(p.dexId   ?? 'unknown'),
+    baseToken: {
+      address: String(bt?.address ?? p.tokenAddress ?? p.address ?? ''),
+      symbol:  String(bt?.symbol  ?? p.symbol  ?? '?'),
+      name:    String(bt?.name    ?? p.name    ?? bt?.symbol ?? p.symbol ?? '?'),
+    },
+    priceUsd:    String(p.priceUsd   ?? '0'),
+    priceChange: (p.priceChange  as Pair['priceChange'])  ?? {},
+    volume:      (p.volume       as Pair['volume'])       ?? {},
+    txns:        (p.txns         as Pair['txns'])         ?? {},
+    liquidity:   (p.liquidity    as Pair['liquidity'])    ?? {},
+    marketCap:   typeof p.marketCap === 'number' ? p.marketCap : undefined,
+    fdv:         typeof p.fdv       === 'number' ? p.fdv       : undefined,
+    pairAddress: String(p.pairAddress ?? p.tokenAddress ?? ''),
+  };
+}
+
+function hasBase(p: unknown): p is Record<string, unknown> {
+  if (typeof p !== 'object' || p === null) return false;
+  const r = p as Record<string, unknown>;
+  return Boolean(r.baseToken || r.tokenAddress);
+}
+
+/*
+ * Normalise any DexScreener response shape → validated Pair[]
+ * Only returns Solana pairs that have actual price and volume data.
+ */
+export function normalisePairs(data: unknown): Pair[] {
+  if (!data || typeof data !== 'object') return [];
+  const d = data as Record<string, unknown>;
+  let raw: Pair[] = [];
+
+  // Shape 1: { pairs: [...] }  ← DexScreener search endpoint
+  if (Array.isArray(d.pairs)) {
+    raw = (d.pairs as unknown[])
+      .filter(hasBase)
+      .map(p => normalisePairObj(p as Record<string, unknown>));
+
+  // Shape 2: { data: [...] }  ← token-profile endpoint (no price data, kept for fallback)
+  } else if (Array.isArray(d.data)) {
+    raw = (d.data as unknown[])
+      .filter(hasBase)
+      .map(p => normalisePairObj(p as Record<string, unknown>));
+
+  // Shape 3: top-level array  ← token-boosts endpoint (no price data, kept for fallback)
+  } else if (Array.isArray(data)) {
+    raw = (data as unknown[])
+      .filter(hasBase)
+      .map(p => normalisePairObj(p as Record<string, unknown>));
+  }
+
+  // Quality gate: Solana-only + must have real price + must have trading activity
+  return raw.filter(isLivePair);
+}
+
+/*
+ * Try each endpoint in order; fall through if the response contains 0 valid pairs.
+ * This correctly handles endpoints like /token-boosts that return HTTP 200 but
+ * have no price/volume data, ensuring we always get actionable pair data.
+ */
 export async function fetchAllEndpoints(logFn: LogFn): Promise<FetchResult> {
   if (!RateLimit.check()) {
     logFn('warn', `Rate limit hit — ${RateLimit.resetIn()}s until reset`);
@@ -56,65 +138,36 @@ export async function fetchAllEndpoints(logFn: LogFn): Promise<FetchResult> {
   for (const [name, url] of Object.entries(ENDPOINTS)) {
     logFn('info', `Trying: ${name}`);
     const r = await fetchWithRetry(url);
+
     if (r.ok) {
-      logFn('ok', `${name} → ${r.latency}ms (direct)`);
-      return { ...r, source: name, proxied: false };
+      // Pre-validate before returning — reject responses with 0 live pairs
+      const preview = normalisePairs(r.data);
+      if (preview.length > 0) {
+        logFn('ok', `${name} → ${r.latency}ms — ${preview.length} Solana pairs with price data`);
+        return { ...r, source: name, proxied: false };
+      }
+      logFn('warn', `${name} → HTTP 200 but 0 valid Solana pairs (no price data) — skipping`);
+      // Fall through to next endpoint / proxies
+    } else {
+      logFn('warn', `${name} failed (${classifyError(r.error)}) — trying proxies`);
     }
-    logFn('warn', `${name} failed (${classifyError(r.error)}) — trying proxies`);
+
+    // Try CORS proxies for this endpoint
     for (const proxy of PROXIES) {
       logFn('info', `Proxy: ${proxy.split('?')[0]}`);
       const pr = await fetchWithRetry(proxy + encodeURIComponent(url));
       if (pr.ok) {
-        logFn('ok', `Proxy → ${pr.latency}ms`);
-        return { ...pr, source: name, proxied: true };
+        const preview = normalisePairs(pr.data);
+        if (preview.length > 0) {
+          logFn('ok', `Proxy → ${pr.latency}ms — ${preview.length} Solana pairs`);
+          return { ...pr, source: name, proxied: true };
+        }
+        logFn('warn', `Proxy → HTTP 200 but 0 valid pairs — skipping`);
+      } else {
+        logFn('warn', `Proxy failed: ${pr.error}`);
       }
-      logFn('warn', `Proxy failed: ${pr.error}`);
     }
   }
+
   return { ok: false, error: 'All endpoints and proxies exhausted', latency: 0 };
-}
-
-/* ── Normalise any DexScreener response shape → Pair[] ── */
-function mapItem(p: Record<string, unknown>): Pair {
-  return {
-    baseToken:   {
-      address: String(p.tokenAddress ?? p.address ?? ''),
-      symbol:  String(p.symbol ?? '?'),
-      name:    String(p.name ?? p.symbol ?? '?'),
-    },
-    priceUsd:    String(p.priceUsd   ?? '0'),
-    priceChange: (p.priceChange  as Pair['priceChange'])  ?? {},
-    volume:      (p.volume       as Pair['volume'])       ?? {},
-    txns:        (p.txns         as Pair['txns'])         ?? {},
-    liquidity:   (p.liquidity    as Pair['liquidity'])    ?? {},
-    marketCap:   p.marketCap  as number | undefined,
-    fdv:         p.fdv        as number | undefined,
-    pairAddress: String(p.pairAddress ?? p.tokenAddress ?? ''),
-    dexId:       String(p.dexId ?? 'unknown'),
-    chainId:     'solana',
-  };
-}
-
-function hasBase(p: unknown): p is Record<string, unknown> {
-  if (typeof p !== 'object' || p === null) return false;
-  const r = p as Record<string, unknown>;
-  return 'baseToken' in r || 'tokenAddress' in r;
-}
-
-export function normalisePairs(data: unknown): Pair[] {
-  if (!data || typeof data !== 'object') return [];
-  const d = data as Record<string, unknown>;
-
-  if (Array.isArray(d.pairs))
-    return (d.pairs as unknown[]).filter((p): p is Pair => {
-      return typeof p === 'object' && p !== null && 'baseToken' in p;
-    });
-
-  if (Array.isArray(d.data))
-    return (d.data as unknown[]).filter(hasBase).map(p => mapItem(p as Record<string, unknown>));
-
-  if (Array.isArray(data))
-    return (data as unknown[]).filter(hasBase).map(p => mapItem(p as Record<string, unknown>));
-
-  return [];
 }
