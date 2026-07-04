@@ -5,12 +5,26 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Permissions required for native GitHub Pages Actions deployment
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  # Single combined job: build both apps then deploy directly to Pages CDN.
+  # Using one job avoids the BlobNotFound artifact-passing issue seen with
+  # the two-job (build → deploy) pattern.
+  build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,14 +35,14 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      # ── Solana Surge Scanner (root) ──
+      # ── Build: Solana Surge Scanner (root) ──
       - name: Install T1 dependencies
         run: npm ci
 
       - name: Build Solana scanner
         run: npm run build
 
-      # ── NYSE Stock Surge Detector (stock/) ──
+      # ── Build: NYSE Stock Surge Detector (stock/) ──
       - name: Install stock/ dependencies
         run: npm ci
         working-directory: stock
@@ -37,26 +51,37 @@ jobs:
         run: npm run build
         working-directory: stock
 
-      # ── Merge: place stock build inside Solana build output ──
-      - name: Merge dist outputs + ensure .nojekyll at root
+      # ── Merge dist outputs ──
+      - name: Merge dist outputs
         run: |
           mkdir -p dist/stock
           cp -r stock/dist/. dist/stock/
-          # Ensure root .nojekyll exists (bypasses GitHub Pages Jekyll runner)
           touch dist/.nojekyll
-          echo "dist/ root:"
-          ls -la dist/
+          echo "Root dist/:"
+          ls dist/
           echo "dist/stock/:"
           ls dist/stock/
 
-      # ── Push combined dist/ to gh-pages branch ──
-      - name: Deploy to gh-pages
+      # ── Configure & deploy directly to GitHub Pages CDN ──
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      # Also keep gh-pages branch in sync (useful for raw GitHub URLs)
+      - name: Sync gh-pages branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
           folder: dist
           clean: true
-          commit-message: "deploy: Solana + Stock from ${{ github.sha }}"
+          commit-message: "sync: from ${{ github.sha }}"
           git-config-name: github-actions[bot]
           git-config-email: github-actions[bot]@users.noreply.github.com
-          force: true
