@@ -48,8 +48,9 @@ export interface Pair {
   pairAddress: string;
 }
 
-export type RiskLevel = 'low' | 'medium' | 'high' | 'unknown';
-export type LogLevel  = 'ok' | 'warn' | 'err' | 'info' | 'admin';
+export type RiskLevel  = 'low' | 'medium' | 'high' | 'unknown';
+export type LogLevel   = 'ok' | 'warn' | 'err' | 'info' | 'admin';
+export type AccumPhase = 'early-accum' | 'active-accum' | 'breakout' | 'none';
 
 export interface P1Component {
   score: number;
@@ -57,13 +58,22 @@ export interface P1Component {
 }
 
 export interface P1Result {
-  score: number;
-  confidence: number;
-  momentum: number;
-  components: Record<string, P1Component>;
-  flags: string[];
-  risk: RiskLevel;
-  buyRatio: number;
+  /* Core P1 */
+  score:         number;
+  confidence:    number;
+  momentum:      number;
+  components:    Record<string, P1Component>;
+  flags:         string[];
+  risk:          RiskLevel;
+  buyRatio:      number;
+  /* Advanced signals (derived from on-chain DEX metrics) */
+  darkPool:      number;       // 0-100  buy-absorption + accumulation inference
+  catalyst:      number;       // 0-100  volume spike + buy burst + breakout freshness
+  imminentScore: number;       // 0-100  combined surge probability
+  accumPhase:    AccumPhase;
+  darkPoolFlags: string[];
+  catalystFlags: string[];
+  isNew:         boolean;      // likely new listing (h24 sparse, m5 active)
 }
 
 export interface FetchStats {

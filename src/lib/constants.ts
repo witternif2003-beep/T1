@@ -1,5 +1,5 @@
 export const VERSION = {
-  app:   '3.3.0-nsa',
+  app:   '3.4.0-nsa',
   p1:    'v3',
   react: '18.3.1',
   three: '0.185.1',
