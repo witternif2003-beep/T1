@@ -1,8 +1,8 @@
 export const VERSION = {
-  app:   '3.1.0-nsa',
+  app:   '3.2.0-nsa',
   p1:    'v3',
   react: '18.3.1',
-  three: 'r170',
+  three: '0.185.1',
   built: new Date().toISOString(),
 } as const;
 
