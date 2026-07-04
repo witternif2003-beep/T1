@@ -1,6 +1,6 @@
 {
   "name": "stock-surge-detector",
-  "version": "1.0.0-nsa",
+  "version": "1.2.0-nsa",
   "private": true,
   "type": "module",
   "scripts": {
