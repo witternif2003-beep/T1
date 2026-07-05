@@ -1,0 +1,30 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "env": {
+    "VITE_PROXY_URL": "@vite_proxy_url",
+    "VITE_POLYGON_KEY": "@vite_polygon_key",
+    "VITE_FINNHUB_KEY": "@vite_finnhub_key",
+    "VITE_ALPHAVANTAGE_KEY": "@vite_alphavantage_key",
+    "VITE_SUPABASE_URL": "@vite_supabase_url",
+    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key"
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://nsa-stock-scanner-api.onrender.com/api/$1"
+    }
+  ]
+}
