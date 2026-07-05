@@ -7,20 +7,11 @@
     "skipLibCheck": true,
     "strict": false,
     "esModuleInterop": true,
-    "resolveJsonModule": true,
-    "noEmit": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     "types": ["vite/client"]
   },
   "include": ["src"],
