@@ -3,13 +3,16 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: 'dist',
+    minify: 'terser',
+    sourcemap: false,
+  },
   server: {
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-      },
-    },
+    host: '0.0.0.0',
+  },
+  define: {
+    'process.env': {},
   },
 })
