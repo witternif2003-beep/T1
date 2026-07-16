@@ -51,6 +51,15 @@ jobs:
         run: npm run build
         working-directory: stock
 
+      # ── Build: Solana Payout Drop Console (solana-payout-drop-console/) ──
+      - name: Install payout console dependencies
+        run: npm ci
+        working-directory: solana-payout-drop-console
+
+      - name: Build payout console
+        run: npm run build
+        working-directory: solana-payout-drop-console
+
       # ── Merge dist outputs ──
       - name: Merge dist outputs
         run: |
@@ -58,7 +67,7 @@ jobs:
           cp -r stock/dist/. dist/stock/
 
           mkdir -p dist/solana-payout-drop-console
-          cp -r solana-payout-drop-console/. dist/solana-payout-drop-console/
+          cp -r solana-payout-drop-console/dist/. dist/solana-payout-drop-console/
 
           touch dist/.nojekyll
 
