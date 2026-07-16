@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   clusterApiUrl,
   Connection,
@@ -15,6 +15,7 @@ import {
 } from '@solana/spl-token';
 
 const RECIPIENT = 'HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG';
+const DEFAULT_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 const COMMITMENT = 'confirmed' as const;
 const connection = new Connection(clusterApiUrl('devnet'), COMMITMENT);
 const explorer = (path: string) => `https://explorer.solana.com/${path}?cluster=devnet`;
@@ -134,11 +135,13 @@ function extractDeltas(transaction: ParsedTransactionWithMeta): BalanceDelta[] {
 }
 
 export default function App() {
+  const mountedRef = useRef(true);
   const [wallet, setWallet] = useState<PublicKey | null>(window.solana?.publicKey ?? null);
   const [walletAvailable, setWalletAvailable] = useState(Boolean(window.solana));
-  const [mintInput, setMintInput] = useState('');
+  const [mintInput] = useState(DEFAULT_MINT);
   const [amountInput, setAmountInput] = useState('');
   const [mintDecimals, setMintDecimals] = useState<number | null>(null);
+  const [mintVerified, setMintVerified] = useState(false);
   const [loadingMint, setLoadingMint] = useState(false);
   const [payoutState, setPayoutState] = useState<'idle' | 'working'>('idle');
   const [message, setMessage] = useState('');
@@ -154,6 +157,10 @@ export default function App() {
     deltas: BalanceDelta[];
     logs: string[];
   } | null>(null);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
 
   const refreshActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -233,27 +240,47 @@ export default function App() {
     return { key, decimals: mint.decimals };
   };
 
-  const inspectMint = async () => {
+  const verifyMint = useCallback(async (value: string, isActive: () => boolean = () => mountedRef.current) => {
     setError('');
     setMessage('');
     setMintDecimals(null);
-    if (!mintInput.trim()) return;
+    setMintVerified(false);
+    if (!value.trim()) return;
     setLoadingMint(true);
     try {
-      const result = await validateMint(mintInput);
+      const result = await validateMint(value);
+      if (!isActive()) return;
       setMintDecimals(result.decimals);
+      setMintVerified(true);
       setMessage(`Mint verified. Token precision: ${result.decimals} decimals.`);
     } catch (err) {
+      if (!isActive()) return;
       setError(friendlyError(err));
     } finally {
-      setLoadingMint(false);
+      if (isActive()) setLoadingMint(false);
     }
+  }, []);
+
+  const inspectMint = () => {
+    void verifyMint(mintInput);
   };
+
+  useEffect(() => {
+    let active = true;
+    void verifyMint(DEFAULT_MINT, () => active && mountedRef.current);
+    return () => {
+      active = false;
+    };
+  }, [verifyMint]);
 
   const sendPayout = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
     setMessage('');
+    if (!mintVerified || mintDecimals === null) {
+      setError('The fixed payout mint has not been verified on Devnet.');
+      return;
+    }
     if (!recipientValidation.valid || !recipientKey) {
       setError(recipientValidation.error ?? 'Recipient validation failed. Payouts are disabled.');
       return;
@@ -379,14 +406,19 @@ export default function App() {
         <section className="card">
           <div className="section-heading"><div><p className="eyebrow">STAGE 01 → 03</p><h2>Prepare payout</h2></div><span className="stage">BROWSER SIGNED</span></div>
           <form className="stack" onSubmit={(event) => void sendPayout(event)}>
-            <label>Token mint address<input value={mintInput} onChange={event => { setMintInput(event.target.value); setMintDecimals(null); }} placeholder="Paste an SPL mint address" spellCheck={false} /></label>
+            <label>Fixed token mint<input value={mintInput} readOnly aria-readonly="true" spellCheck={false} /></label>
+            {loadingMint
+              ? <span className="audit-badge">Checking mint on Devnet…</span>
+              : mintVerified && mintDecimals !== null
+                ? <span className="audit-badge">✓ Verified · {mintDecimals} decimals · Devnet</span>
+                : <span className="audit-badge audit-failed">✗ Mint not found on Devnet</span>}
             <div className="inline">
               <label>Amount<input value={amountInput} onChange={event => setAmountInput(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
               <div className="precision"><span className="label">Precision</span><strong>{mintDecimals == null ? '—' : `${mintDecimals} decimals`}</strong></div>
             </div>
             <div className="button-row">
-              <button type="button" className="secondary" onClick={() => void inspectMint()} disabled={loadingMint || !mintInput.trim()}>{loadingMint ? 'Checking…' : 'Check mint'}</button>
-              <button type="submit" disabled={!wallet || !recipientValidation.valid || payoutState === 'working'}>{payoutState === 'working' ? 'Sending…' : 'Send payout'}</button>
+              <button type="button" className="secondary" onClick={inspectMint} disabled={loadingMint}>{loadingMint ? 'Checking…' : 'Check mint'}</button>
+              <button type="submit" disabled={!wallet || !recipientValidation.valid || !mintVerified || payoutState === 'working'}>{payoutState === 'working' ? 'Sending…' : 'Send payout'}</button>
             </div>
             <p className="hint">If needed, the recipient token account is created in the same transaction.</p>
           </form>
