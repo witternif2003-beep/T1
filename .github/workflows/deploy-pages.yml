@@ -5,9 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Permissions required for native GitHub Pages Actions deployment
+# Permissions required for native Pages deployment plus the gh-pages branch sync
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
