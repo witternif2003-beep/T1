@@ -31,16 +31,19 @@ async function fetchOnce(url: string): Promise<{ ok: boolean; data?: unknown; la
   try {
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
-    const res   = await fetch(url, {
-      signal:  ctrl.signal,
-      headers: { 'Cache-Control': 'no-cache', 'Accept': 'application/json' },
-    });
-    clearTimeout(timer);
-    const latency = Date.now() - t0;
-    if (!res.ok) return { ok: false, latency, error: `HTTP ${res.status}` };
-    const data: unknown = await res.json();
-    if (typeof data !== 'object' || data === null) return { ok: false, latency, error: 'Non-object response' };
-    return { ok: true, data, latency };
+    try {
+      const res   = await fetch(url, {
+        signal:  ctrl.signal,
+        headers: { 'Cache-Control': 'no-cache', 'Accept': 'application/json' },
+      });
+      const latency = Date.now() - t0;
+      if (!res.ok) return { ok: false, latency, error: `HTTP ${res.status}` };
+      const data: unknown = await res.json();
+      if (typeof data !== 'object' || data === null) return { ok: false, latency, error: 'Non-object response' };
+      return { ok: true, data, latency };
+    } finally {
+      clearTimeout(timer);
+    }
   } catch (e) {
     return {
       ok: false, latency: Date.now() - t0,
@@ -88,10 +91,11 @@ function extractQuotes(data: unknown): YFQuote[] {
 
 /* ── Map YFQuote → normalised Stock ── */
 function mapQuote(q: YFQuote): Stock | null {
+  if (!q || typeof q !== 'object' || typeof q.symbol !== 'string' || !q.symbol.trim()) return null;
   const price = q.regularMarketPrice ?? 0;
-  if (price <= 0 || price > MAX_PRICE_USD)                             return null;
-  if (q.quoteType && !['EQUITY', 'ETF'].includes(q.quoteType))         return null;
-  if ((q.regularMarketVolume ?? 0) < 100)                              return null;
+  if (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE_USD)   return null;
+  if (q.quoteType && (typeof q.quoteType !== 'string' || !['EQUITY', 'ETF'].includes(q.quoteType))) return null;
+  if (!Number.isFinite(q.regularMarketVolume ?? 0) || (q.regularMarketVolume ?? 0) < 100) return null;
   return {
     symbol:       q.symbol,
     name:         q.shortName || q.longName || q.symbol,

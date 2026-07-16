@@ -18,6 +18,8 @@ const RECIPIENT = 'HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG';
 const COMMITMENT = 'confirmed' as const;
 const connection = new Connection(clusterApiUrl('devnet'), COMMITMENT);
 const explorer = (path: string) => `https://explorer.solana.com/${path}?cluster=devnet`;
+const MAX_TOKEN_AMOUNT = (1n << 64n) - 1n;
+const SOLANA_SIGNATURE_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
 
 type RecipientValidation = {
   valid: boolean;
@@ -92,6 +94,7 @@ function toRawAmount(value: string, decimals: number): bigint {
   const units = `${whole}${fraction.padEnd(decimals, '0')}`.replace(/^0+(?=\d)/, '');
   const raw = BigInt(units || '0');
   if (raw <= 0n) throw new Error('Enter an amount greater than zero.');
+  if (raw > MAX_TOKEN_AMOUNT) throw new Error('Amount is too large for an SPL token transfer.');
   return raw;
 }
 
@@ -319,6 +322,9 @@ export default function App() {
     try {
       const signature = verifyInput.trim();
       if (!signature) throw new Error('Enter a transaction signature.');
+      if (!SOLANA_SIGNATURE_PATTERN.test(signature)) {
+        throw new Error('Enter a valid Solana transaction signature.');
+      }
       const transaction = await connection.getParsedTransaction(signature, {
         commitment: COMMITMENT,
         maxSupportedTransactionVersion: 0,

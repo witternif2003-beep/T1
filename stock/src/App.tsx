@@ -103,13 +103,32 @@ export default function App() {
     setLoading(false);
   }, [log]);
 
-  useEffect(() => { fetchStocks(); }, []); // eslint-disable-line
+  const handleFetchFailure = useCallback((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    setStocks([]);
+    setLoading(false);
+    setFetchStats(prev => ({
+      ...prev,
+      fetchCount: prev.fetchCount + 1,
+      errorCount: prev.errorCount + 1,
+      lastFetch: Date.now(),
+    }));
+    setError(message || 'Unexpected stock scanner error');
+    setErrorType(classifyError(message));
+    log('err', `Unexpected stock scanner error: ${message}`);
+  }, [log]);
+
+  const runFetchStocks = useCallback(() => {
+    void fetchStocks().catch(handleFetchFailure);
+  }, [fetchStocks, handleFetchFailure]);
+
+  useEffect(() => { runFetchStocks(); }, [runFetchStocks]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => fetchStocks(), refreshSec * 1000);
+    timerRef.current = setInterval(runFetchStocks, refreshSec * 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [refreshSec]); // eslint-disable-line
+  }, [refreshSec, runFetchStocks]);
 
   useEffect(() => {
     tickRef.current = setInterval(() => {
@@ -180,7 +199,7 @@ export default function App() {
           <button className="btn btn-purple" onClick={() => setShowAdmin(v => !v)}>
             {showAdmin ? '▼ Admin' : '▲ Admin'}
           </button>
-          <button className="btn btn-green" onClick={fetchStocks} disabled={loading}>
+          <button className="btn btn-green" onClick={runFetchStocks} disabled={loading}>
             {loading ? 'Scanning…' : '↺ Scan Now'}
           </button>
         </div>
@@ -222,7 +241,7 @@ export default function App() {
         <AdminPanel
           stats={fetchStats} logs={logs} stocks={stocks}
           onClear={() => dispatch({ type: 'clear' })}
-          onRefresh={fetchStocks}
+          onRefresh={runFetchStocks}
         />
       )}
 
@@ -324,7 +343,7 @@ export default function App() {
         <ErrorScreen
           error={error} errorType={errorType}
           fetchCount={fetchCountRef.current}
-          logs={logs} onRetry={fetchStocks}
+          logs={logs} onRetry={runFetchStocks}
         />
       ) : processed.length === 0 ? (
         <div className="panel p-6 text-center muted">

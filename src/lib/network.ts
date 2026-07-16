@@ -14,16 +14,19 @@ async function fetchWithRetry(url: string, maxRetries = 2): Promise<FetchResult>
     try {
       const ctrl  = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT);
-      const res   = await fetch(url, {
-        signal:  ctrl.signal,
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      clearTimeout(timer);
-      latency = Date.now() - t0;
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      const data: unknown = await res.json();
-      if (typeof data !== 'object' || data === null) throw new Error('Non-object response');
-      return { ok: true, data, latency };
+      try {
+        const res   = await fetch(url, {
+          signal:  ctrl.signal,
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+        latency = Date.now() - t0;
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+        const data: unknown = await res.json();
+        if (typeof data !== 'object' || data === null) throw new Error('Non-object response');
+        return { ok: true, data, latency };
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (e) {
       latency = Date.now() - t0;
       lastErr = (e instanceof Error)
@@ -57,7 +60,7 @@ function isLivePair(p: Pair): boolean {
   const vol24  = p.volume?.h24 ?? 0;
   return (
     p.chainId === 'solana' &&
-    !isNaN(price) &&
+    Number.isFinite(price) &&
     price > 0 &&
     vol24 > 0
   );

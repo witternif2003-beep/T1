@@ -97,13 +97,32 @@ export default function App() {
     setLoading(false);
   }, [log]);
 
-  useEffect(() => { fetchTokens(); }, []); // eslint-disable-line
+  const handleFetchFailure = useCallback((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    setTokens([]);
+    setLoading(false);
+    setFetchStats(prev => ({
+      ...prev,
+      fetchCount: prev.fetchCount + 1,
+      errorCount: prev.errorCount + 1,
+      lastFetch: Date.now(),
+    }));
+    setError(message || 'Unexpected scanner error');
+    setErrorType(classifyError(message));
+    log('err', `Unexpected scanner error: ${message}`);
+  }, [log]);
+
+  const runFetchTokens = useCallback(() => {
+    void fetchTokens().catch(handleFetchFailure);
+  }, [fetchTokens, handleFetchFailure]);
+
+  useEffect(() => { runFetchTokens(); }, [runFetchTokens]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => fetchTokens(), refreshSec * 1000);
+    timerRef.current = setInterval(runFetchTokens, refreshSec * 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [refreshSec]); // eslint-disable-line
+  }, [refreshSec, runFetchTokens]);
 
   useEffect(() => {
     tickRef.current = setInterval(() => {
@@ -170,7 +189,7 @@ export default function App() {
           <button className="btn btn-purple" onClick={() => setShowAdmin(v => !v)}>
             {showAdmin ? '▼ Admin' : '▲ Admin'}
           </button>
-          <button className="btn btn-cyan" onClick={fetchTokens} disabled={loading}>
+          <button className="btn btn-cyan" onClick={runFetchTokens} disabled={loading}>
             {loading ? 'Scanning…' : '↺ Scan Now'}
           </button>
         </div>
@@ -207,7 +226,7 @@ export default function App() {
         <AdminPanel
           stats={fetchStats} logs={logs} tokens={tokens}
           onClearLogs={() => dispatchLog({ type: 'clear' })}
-          onForceRefresh={fetchTokens}
+          onForceRefresh={runFetchTokens}
         />
       )}
 
@@ -301,7 +320,7 @@ export default function App() {
         </div>
       ) : hasError ? (
         <ErrorScreen error={error} errorType={errorType}
-          fetchCount={fetchCountRef.current} logs={logs} onRetry={fetchTokens} />
+          fetchCount={fetchCountRef.current} logs={logs} onRetry={runFetchTokens} />
       ) : processed.length === 0 ? (
         <div className="panel p-6 text-center muted">
           No tokens match Min P1 ≥ {minP1}. Lower the threshold.
