@@ -1,82 +1,47 @@
-# Solana Surge Scanner — NSA Admin Edition
+# Solana Payout Drop Console
 
-**v3.1.0-nsa** · React 18 · TypeScript · Vite 6 · Three.js r170
+This folder contains a standalone, self-contained web app for verifiable Solana Devnet SPL-token payouts to a fixed recipient wallet:
 
-Real-time Solana token surge scanner built as a proper compiled Vite + React app — same architecture as Design Arena web apps.
+- Fixed recipient wallet: `HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG`
+- Browser-wallet approval flow
+- Associated Token Account preview for the recipient
+- Checked SPL token transfer flow
+- Transaction verification panel
 
----
+## Files
 
-## Live URL
+- `index.html` — standalone single-file web app
+- `start.sh` — local static server start helper on port `8091`
+- `stop.sh` — stop helper
+- `restart.sh` — restart helper
+- `t1-payout-app-root.service` — example `systemd --user` unit
 
-> **https://witternif2003-beep.github.io/T1/**
->
-> Auto-deploys on every push to `main` via GitHub Actions (build → deploy to `gh-pages`).
->
-> **One-time setup:** Go to [Settings → Pages](https://github.com/witternif2003-beep/T1/settings/pages), set source to **"Deploy from a branch"** → `gh-pages` → `/(root)` → Save.
-
-### One-click alternatives (custom subdomain)
-
-| Platform | Link |
-|---|---|
-| Netlify | [app.netlify.com/start/deploy?repository=…](https://app.netlify.com/start/deploy?repository=https://github.com/witternif2003-beep/T1) |
-| Vercel  | [vercel.com/new/clone?repository-url=…](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwitternif2003-beep%2FT1) |
-
----
-
-## Development
+## Local usage
 
 ```bash
-npm install
-npm run dev       # vite dev server at localhost:5173
-npm run build     # tsc + vite production build → dist/
-npm run preview   # preview production build
+cd solana-payout-drop-console
+python3 -m http.server 8091
 ```
 
-## Project Structure
+Then open:
 
-```
-src/
-├── main.tsx              # React entry point
-├── App.tsx               # Root component + state management
-├── index.css             # All styles (design tokens, layout, components)
-├── types.ts              # Shared TypeScript interfaces
-├── lib/
-│   ├── constants.ts      # Endpoints, proxies, URL builders
-│   ├── session.ts        # JWT-style ephemeral session token
-│   ├── rateLimit.ts      # 30 req/min client-side guard
-│   ├── formatters.ts     # USD, %, volume, time formatters
-│   ├── computeP1.ts      # P1 v3 score engine
-│   └── network.ts        # fetchWithRetry, fetchAllEndpoints, normalisePairs
-└── components/
-    ├── TokenCard.tsx      # Per-token card with P1 bars and links
-    ├── AdminPanel.tsx     # NSA admin diagnostics panel
-    ├── ErrorScreen.tsx    # Hard error state (no mock data)
-    └── Telemetry3D.tsx    # Three.js 3D volume chart + WebGL detection
+- `http://localhost:8091/`
+
+## systemd --user install
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp t1-payout-app-root.service ~/.config/systemd/user/t1-payout-app-root.service
+systemctl --user daemon-reload
+systemctl --user enable t1-payout-app-root.service
+systemctl --user start t1-payout-app-root.service
 ```
 
-## Features
+## Runtime notes
 
-| Feature | Details |
-|---|---|
-| **Live data only** | No mock/demo fallback — hard `ErrorScreen` when API unreachable |
-| **CSP meta tag** | Content-Security-Policy — no CDN script injection |
-| **JWT-style session** | Ephemeral `header.payload.sig`, tab-scoped |
-| **Rate-limit guard** | 30 req/min, countdown in admin panel |
-| **Fetch integrity** | Non-null object assertion on every response |
-| **WebGL detection** | WebGL1/2 probe + GPU renderer in diagnostics |
-| **Admin panel** | SYSTEM · NETWORK · EVENT LOG with force-fetch |
-| **P1 v3 engine** | 6-component score with momentum + confidence dampening |
-| **3D telemetry** | Three.js r170 rotating volume chart with momentum rings |
+The app is designed for Devnet-first testing. To send a live test payout, you still need:
 
-## P1 v3 Score Components
-
-| Component | Weight | Signal |
-|---|---|---|
-| Price Δ m5 | 25% | Magnitude + 1h alignment; late penalty if 24h > 300% |
-| Volume Surge | 22% | m5/h1 ratio; 2× acceleration multiplier |
-| Liquidity | 18% | liq/mcap ratio |
-| TX Velocity | 15% | m5/h1 tx ratio; buy-pressure at 1.5× and 4× |
-| MC/FDV | 10% | Unlock pressure |
-| Momentum | 10% | Positive TF alignment (5m · 1h · 6h · 24h) |
-
-Data: [DexScreener public API](https://dexscreener.com) · 4 endpoints · 2 CORS proxy fallbacks · Not financial advice
+- a connected Devnet wallet
+- the exact custom SPL mint address
+- a source token account with enough balance
+- wallet signature approval at runtime
