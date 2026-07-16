@@ -35,6 +35,8 @@ h3 { margin: 22px 0 10px; font-size: .92rem; color: var(--cyan); }
 .subtitle { max-width: 580px; color: var(--muted); }
 .recipient { min-width: 280px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 16px; border: 1px solid rgba(99,230,190,.2); border-radius: 13px; background: rgba(0,0,0,.13); }
 .recipient code, code { color: var(--cyan); overflow-wrap: anywhere; }
+.audit-badge { width: fit-content; padding: 4px 7px; border: 1px solid rgba(99,230,190,.25); border-radius: 999px; color: var(--cyan); background: rgba(99,230,190,.08); font-size: .68rem; }
+.audit-badge.audit-failed { border-color: rgba(255,133,133,.4); color: var(--red); background: rgba(255,133,133,.08); }
 .label { display: block; margin-bottom: 5px; color: var(--muted); font-size: .74rem; text-transform: uppercase; letter-spacing: .09em; }
 .wallet-panel, .section-heading, .button-row, .verify-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wallet-panel { margin-bottom: 18px; }
