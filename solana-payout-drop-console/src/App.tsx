@@ -17,8 +17,33 @@ import {
 const RECIPIENT = 'HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG';
 const COMMITMENT = 'confirmed' as const;
 const connection = new Connection(clusterApiUrl('devnet'), COMMITMENT);
-const recipientKey = new PublicKey(RECIPIENT);
 const explorer = (path: string) => `https://explorer.solana.com/${path}?cluster=devnet`;
+
+type RecipientValidation = {
+  valid: boolean;
+  onCurve: boolean;
+  error?: string;
+};
+
+function validateRecipient(): RecipientValidation {
+  try {
+    const key = new PublicKey(RECIPIENT);
+    const bytes = key.toBytes();
+    const onCurve = PublicKey.isOnCurve(bytes);
+    if (bytes.length !== 32) {
+      return { valid: false, onCurve, error: 'Recipient address is not a 32-byte Solana public key.' };
+    }
+    if (!onCurve) {
+      return { valid: false, onCurve, error: 'Recipient address is a PDA, not a wallet-owned account.' };
+    }
+    return { valid: true, onCurve };
+  } catch {
+    return { valid: false, onCurve: false, error: 'Recipient address is not a valid Solana public key.' };
+  }
+}
+
+const recipientValidation = validateRecipient();
+const recipientKey = recipientValidation.valid ? new PublicKey(RECIPIENT) : null;
 
 type ActivitySignature = {
   signature: string;
@@ -129,6 +154,12 @@ export default function App() {
 
   const refreshActivity = useCallback(async () => {
     setActivityLoading(true);
+    if (!recipientKey) {
+      setActivity([]);
+      setError(recipientValidation.error ?? 'Recipient validation failed.');
+      setActivityLoading(false);
+      return;
+    }
     try {
       const signatures = await connection.getSignaturesForAddress(recipientKey, { limit: 8 }, COMMITMENT);
       setActivity(signatures.map(item => ({
@@ -220,6 +251,10 @@ export default function App() {
     event.preventDefault();
     setError('');
     setMessage('');
+    if (!recipientValidation.valid || !recipientKey) {
+      setError(recipientValidation.error ?? 'Recipient validation failed. Payouts are disabled.');
+      return;
+    }
     if (!wallet || !window.solana) {
       setError('Connect a browser wallet before sending a payout.');
       return;
@@ -315,6 +350,10 @@ export default function App() {
         <div className="recipient">
           <span className="label">Fixed recipient</span>
           <code>{shortKey(RECIPIENT, 12, 10)}</code>
+          {recipientValidation.valid
+            ? <span className="audit-badge">✓ Validated · 32-byte ed25519 · wallet account</span>
+            : <span className="audit-badge audit-failed">✗ Recipient validation failed</span>}
+          {!recipientValidation.valid && <span className="error">{recipientValidation.error}</span>}
           <a href={explorer(`address/${RECIPIENT}`)} target="_blank" rel="noreferrer">Open in Solana Explorer ↗</a>
         </div>
       </header>
@@ -341,7 +380,7 @@ export default function App() {
             </div>
             <div className="button-row">
               <button type="button" className="secondary" onClick={() => void inspectMint()} disabled={loadingMint || !mintInput.trim()}>{loadingMint ? 'Checking…' : 'Check mint'}</button>
-              <button type="submit" disabled={!wallet || payoutState === 'working'}>{payoutState === 'working' ? 'Sending…' : 'Send payout'}</button>
+              <button type="submit" disabled={!wallet || !recipientValidation.valid || payoutState === 'working'}>{payoutState === 'working' ? 'Sending…' : 'Send payout'}</button>
             </div>
             <p className="hint">If needed, the recipient token account is created in the same transaction.</p>
           </form>
