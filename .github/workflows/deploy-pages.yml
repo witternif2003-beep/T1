@@ -56,11 +56,18 @@ jobs:
         run: |
           mkdir -p dist/stock
           cp -r stock/dist/. dist/stock/
+
+          mkdir -p dist/solana-payout-drop-console
+          cp -r solana-payout-drop-console/. dist/solana-payout-drop-console/
+
           touch dist/.nojekyll
+
           echo "Root dist/:"
           ls dist/
           echo "dist/stock/:"
           ls dist/stock/
+          echo "dist/solana-payout-drop-console/:"
+          ls dist/solana-payout-drop-console/
 
       # ── Configure & deploy directly to GitHub Pages CDN ──
       - name: Setup Pages
