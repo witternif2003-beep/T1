@@ -2,6 +2,8 @@ node_modules/
 dist/
 stock/node_modules/
 stock/dist/
+solana-payout-drop-console/node_modules/
+solana-payout-drop-console/dist/
 .env
 .env.local
 *.local
