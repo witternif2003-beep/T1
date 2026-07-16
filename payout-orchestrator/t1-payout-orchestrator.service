@@ -1,0 +1,18 @@
+[Unit]
+Description=T1 Devnet payout orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=t1-payout
+WorkingDirectory=/opt/t1-payout-orchestrator
+ExecStart=/usr/bin/node /opt/t1-payout-orchestrator/dist/index.js
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/t1-payout-orchestrator/.env
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
