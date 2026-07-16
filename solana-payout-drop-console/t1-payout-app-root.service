@@ -1,0 +1,14 @@
+[Unit]
+Description=T1 Solana Payout Drop Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/t1-payout-app
+ExecStart=/opt/t1-payout-app/bin/start
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
