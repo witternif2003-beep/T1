@@ -7,3 +7,7 @@ solana-payout-drop-console/dist/
 .env
 .env.local
 *.local
+payout-orchestrator/node_modules/
+payout-orchestrator/dist/
+payout-orchestrator/.env
+payout-orchestrator/*.log
