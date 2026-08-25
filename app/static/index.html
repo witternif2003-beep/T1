@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Standalone verified-data anomaly surge detector" />
-    <title>Standalone Anomaly Surge Detector</title>
+    <meta name="description" content="AIP-S0 verified-data realtime anomaly telemetry scanner" />
+    <title>AIP-S0 Real-Time Anomaly Scanner</title>
     <link rel="stylesheet" href="/static/css/style.css" />
   </head>
   <body>
     <main class="shell">
       <section class="hero">
         <div>
-          <div class="eyebrow">Verified data only / Admin telemetry</div>
-          <h1>Anomaly Surge Detector</h1>
+          <div class="eyebrow">Verified data only / realtime telemetry</div>
+          <h1>AIP-S0 Anomaly Telemetry</h1>
           <p class="lede">
             A standalone Flask web app for validating entity telemetry, scoring anomaly patterns,
             and streaming live service diagnostics. No mock findings are generated; the dashboard
@@ -25,41 +25,55 @@
         </div>
       </section>
 
+      <section class="panel wide status-bar" aria-label="Connection status">
+        <span class="status-pill">
+          <span class="dot" data-live-dot></span>
+          <span id="connectionStatus" data-live-status>connecting</span>
+        </span>
+        <span id="timestamp" data-last-update>pending</span>
+      </section>
+
       <section class="grid" aria-label="Scan summary">
         <article class="panel">
-          <div class="stat-label">Verified entities</div>
-          <div class="stat-value" data-stat-entities>0</div>
+          <div class="stat-label">Total anomalies</div>
+          <div class="stat-value" id="totalAnomalies" data-stat-anomalies>0</div>
         </article>
         <article class="panel">
-          <div class="stat-label">Patterns loaded</div>
-          <div class="stat-value" data-stat-patterns>0</div>
+          <div class="stat-label">Active alerts</div>
+          <div class="stat-value" id="activeAlerts" data-stat-alerts>0</div>
         </article>
         <article class="panel">
-          <div class="stat-label">P1 findings</div>
-          <div class="stat-value" data-stat-p1>0</div>
+          <div class="stat-label">Average severity</div>
+          <div class="stat-value" id="avgSeverity" data-stat-avg>0%</div>
         </article>
         <article class="panel">
-          <div class="stat-label">Highest score</div>
-          <div class="stat-value" data-stat-highest>0</div>
+          <div class="stat-label">Top entity</div>
+          <div class="stat-value stat-value-small" id="topEntity" data-stat-top>none</div>
         </article>
       </section>
 
       <section class="panel wide">
         <div class="section-title">
           <div>
-            <h2>Findings</h2>
+            <h2>Live anomaly feed</h2>
             <p class="meta">
               Status: <span data-refresh-state>Loading</span> /
-              Last update: <span data-last-update>pending</span>
+              Verified entities: <span data-stat-entities>0</span> /
+              Patterns: <span data-stat-patterns>0</span> /
+              P1: <span data-stat-p1>0</span> /
+              Highest: <span data-stat-highest>0</span>
             </p>
           </div>
-          <span class="status-pill">
-            <span class="dot" data-live-dot></span>
-            <span data-live-status>connecting</span>
-          </span>
         </div>
         <div class="notice" data-notice hidden></div>
-        <div class="findings" data-findings></div>
+        <div class="findings" id="anomalyList" data-findings></div>
+      </section>
+
+      <section class="panel wide chart-container" aria-label="Anomaly severity chart">
+        <div class="section-title">
+          <h2>Severity chart</h2>
+        </div>
+        <canvas id="anomalyChart" width="1000" height="320"></canvas>
       </section>
 
       <section class="grid" aria-label="Diagnostics">

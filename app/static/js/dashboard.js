@@ -14,12 +14,18 @@
     if (node) node.textContent = value;
   }
 
-  function renderStats(report) {
+  function renderStats(report, statisticsPayload) {
     const summary = report?.summary || {};
+    const statistics = statisticsPayload?.statistics || {};
     setText("[data-stat-entities]", formatNumber(summary.verified_entities));
     setText("[data-stat-patterns]", formatNumber(summary.patterns_loaded));
     setText("[data-stat-p1]", formatNumber(summary.priorities?.P1));
     setText("[data-stat-highest]", formatNumber(summary.highest_score));
+    setText("[data-stat-anomalies]", formatNumber(statistics.total_anomalies));
+    setText("[data-stat-alerts]", formatNumber(statistics.active_alerts));
+    setText("[data-stat-avg]", `${formatNumber(statistics.avg_severity)}%`);
+    setText("[data-stat-top]", statistics.top_entity || "none");
+    setText("#timestamp", statistics.timestamp || report?.generated_at || "pending");
   }
 
   function renderNotice(report) {
@@ -42,6 +48,7 @@
     const findings = report?.findings || [];
     if (!findings.length) {
       container.innerHTML = '<div class="notice">No anomaly findings are available because no verified entity records are loaded.</div>';
+      renderChart([]);
       return;
     }
 
@@ -91,6 +98,49 @@
       fragment.appendChild(card);
     });
     container.appendChild(fragment);
+    renderChart(findings);
+  }
+
+  function renderChart(findings) {
+    const canvas = document.querySelector("#anomalyChart");
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = "rgba(255, 255, 255, 0.04)";
+    context.fillRect(0, 0, width, height);
+
+    const topFindings = (findings || []).slice(0, 8);
+    if (!topFindings.length) {
+      context.fillStyle = "#94a3b8";
+      context.font = "18px sans-serif";
+      context.fillText("No verified anomaly data loaded", 24, 48);
+      return;
+    }
+
+    const padding = 36;
+    const barGap = 14;
+    const barWidth = (width - padding * 2 - barGap * (topFindings.length - 1)) / topFindings.length;
+    context.font = "13px sans-serif";
+
+    topFindings.forEach((finding, index) => {
+      const score = Math.max(0, Math.min(100, Number(finding.score) || 0));
+      const barHeight = ((height - 88) * score) / 100;
+      const x = padding + index * (barWidth + barGap);
+      const y = height - padding - barHeight;
+      const gradient = context.createLinearGradient(0, y, 0, height - padding);
+      gradient.addColorStop(0, "#00d9ff");
+      gradient.addColorStop(1, "#21e6a8");
+      context.fillStyle = gradient;
+      context.fillRect(x, y, barWidth, barHeight);
+      context.fillStyle = "#edf4ff";
+      context.fillText(String(Math.round(score)), x, y - 8);
+      context.fillStyle = "#94a3b8";
+      const label = finding.entity?.name || finding.entity?.id || "entity";
+      context.fillText(label.slice(0, 14), x, height - 12);
+    });
   }
 
   function escapeHtml(value) {
@@ -117,13 +167,14 @@
     setText("[data-refresh-state]", "Refreshing");
 
     try {
-      const [health, scan] = await Promise.all([
+      const [health, scan, statistics] = await Promise.all([
         fetchJson("/api/health"),
         fetchJson("/api/scan"),
+        fetchJson("/api/statistics"),
       ]);
       state.health = health;
       state.report = scan;
-      renderStats(scan);
+      renderStats(scan, statistics);
       renderNotice(scan);
       renderFindings(scan);
       setText("[data-refresh-state]", "Current");
