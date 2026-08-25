@@ -55,6 +55,10 @@
         .slice(0, 6)
         .map((hit) => `<span class="hit">${escapeHtml(hit.name)}: ${formatNumber(hit.value)}</span>`)
         .join("");
+      const vectorMarkup = (finding.forensic_vectors || [])
+        .slice(0, 6)
+        .map((hit) => `<span class="hit">${escapeHtml(hit.vector_id)} ${escapeHtml(hit.name)}</span>`)
+        .join("");
 
       card.innerHTML = `
         <div class="finding-head">
@@ -74,9 +78,11 @@
         <div class="meta">
           Confidence ${formatNumber((finding.confidence || 0) * 100)}% /
           Integrity ${escapeHtml(finding.forensics?.integrity || "unknown")} /
-          Risk ${escapeHtml(finding.forensics?.risk_band || "unknown")}
+          Risk ${escapeHtml(finding.forensics?.risk_band || "unknown")} /
+          Custody ${escapeHtml((finding.chain_of_custody_hash || "").slice(0, 12))}
         </div>
-        <div class="hits">${hitMarkup || '<span class="hit">No active pattern hits</span>'}</div>
+        <div class="hits">${hitMarkup || '<span class="hit">No active metric pattern hits</span>'}</div>
+        <div class="hits">${vectorMarkup || '<span class="hit">No forensic vector hits</span>'}</div>
       `;
       fragment.appendChild(card);
     });

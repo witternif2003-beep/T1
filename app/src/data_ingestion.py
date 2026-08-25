@@ -30,6 +30,7 @@ class EntityRecord:
     observed_at: datetime
     metrics: dict[str, float]
     tags: list[str] = field(default_factory=list)
+    attributes: dict[str, str] = field(default_factory=dict)
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +44,7 @@ class EntityRecord:
             "observed_at": self.observed_at.isoformat(),
             "metrics": self.metrics,
             "tags": self.tags,
+            "attributes": self.attributes,
         }
 
 
@@ -148,6 +150,22 @@ def _normalize_tags(tags: Any) -> list[str]:
     return normalized
 
 
+def _normalize_attributes(attributes: Any) -> dict[str, str]:
+    if attributes is None:
+        return {}
+    if not isinstance(attributes, dict):
+        raise DataValidationError("attributes must be an object when provided")
+
+    normalized: dict[str, str] = {}
+    for key, value in attributes.items():
+        if not isinstance(key, str) or not key.strip():
+            raise DataValidationError("attribute names must be non-empty strings")
+        if not isinstance(value, str) or not value.strip():
+            raise DataValidationError(f"attribute {key} must be a non-empty string")
+        normalized[key.strip()] = value.strip()
+    return normalized
+
+
 def normalize_entity(raw_entity: Any) -> EntityRecord:
     if not isinstance(raw_entity, dict):
         raise DataValidationError("entity records must be objects")
@@ -162,6 +180,7 @@ def normalize_entity(raw_entity: Any) -> EntityRecord:
         observed_at=parse_utc_datetime(raw_entity.get("observed_at"), "observed_at"),
         metrics=_normalize_metrics(raw_entity.get("metrics")),
         tags=_normalize_tags(raw_entity.get("tags")),
+        attributes=_normalize_attributes(raw_entity.get("attributes")),
     )
 
 

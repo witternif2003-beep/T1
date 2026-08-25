@@ -31,6 +31,8 @@ def annotate_finding(finding: AnomalyFinding) -> dict[str, Any]:
         "risk_band": risk_band(finding.score),
         "integrity": integrity_label(finding),
         "hit_count": len(finding.hits),
+        "forensic_vector_count": len(finding.forensic_vectors),
+        "chain_of_custody_hash": finding.chain_of_custody_hash,
         "top_factor": finding.hits[0].name if finding.hits else None,
         "data_lineage": {
             "source_name": finding.entity.source_name,

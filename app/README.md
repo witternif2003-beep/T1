@@ -4,6 +4,7 @@ This directory contains a standalone Flask web app with:
 
 - validated JSON ingestion
 - deterministic anomaly scoring
+- 47 deterministic forensic text vectors for verified public attributes
 - forensic report output
 - static dashboard UI
 - live server-sent telemetry
@@ -72,6 +73,9 @@ POST a complete replacement entity set to `/api/entities`:
         "source_confidence": 0.91,
         "impact_score": 82
       },
+      "attributes": {
+        "public_record_note": "Replace this with verified public-source text."
+      },
       "tags": ["verified"]
     }
   ]
@@ -79,3 +83,6 @@ POST a complete replacement entity set to `/api/entities`:
 ```
 
 All records are validated before they are written to `data/entities.json`.
+Optional `attributes` fields are scanned by the forensic-vector engine. Reports
+include vector hits and a chain-of-custody hash, but the app never creates
+simulated anomaly records.
