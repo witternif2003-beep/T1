@@ -16,7 +16,10 @@ the dashboard reports `no_verified_data_loaded` until trusted records are added.
 
 - Python 3.14.7
 - Flask 3.1.3
+- Flask-Cors 6.0.5
+- Flask-SocketIO 5.6.1
 - Gunicorn 26.2.0
+- simple-websocket 1.1.0
 
 `requirements.txt` pins the direct runtime dependencies. `requirements.lock`
 pins the full latest resolved deployment set and is the file used by Docker and
@@ -43,9 +46,9 @@ docker run --rm -p 8080:8080 anomaly-surge-detector
 ## Deployment build
 
 The `Standalone App Build` GitHub Actions workflow installs the locked latest
-runtime stack, runs dependency advisory checks, smoke-tests the Flask API,
-validates the Gunicorn entrypoint, and uploads `standalone-anomaly-app.tar.gz`
-as a deployable artifact.
+runtime stack, runs dependency advisory checks, smoke-tests the Flask and
+SocketIO APIs, validates the Gunicorn entrypoint, and uploads
+`standalone-anomaly-app.tar.gz` as a deployable artifact.
 
 ## Load verified records
 

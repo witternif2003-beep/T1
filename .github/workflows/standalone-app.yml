@@ -52,7 +52,7 @@ jobs:
           python - <<'PY'
           from importlib.metadata import metadata
 
-          for package in ("Flask", "gunicorn"):
+          for package in ("Flask", "Flask-Cors", "Flask-SocketIO", "gunicorn", "simple-websocket"):
               meta = metadata(package)
               print(f"{package}: {meta.get('License') or meta.get('License-Expression') or 'license metadata not declared'}")
               for classifier in meta.get_all("Classifier", []):
@@ -80,12 +80,17 @@ jobs:
           )
           os.environ["APP_DATA_DIR"] = str(data_dir)
 
-          from app.app import app
+          from app.app import app, socketio
 
           client = app.test_client()
-          for path in ("/", "/api/health", "/api/entities", "/api/patterns", "/api/scan", "/api/reports/latest", "/api/telemetry"):
+          for path in ("/", "/api/health", "/api/entities", "/api/patterns", "/api/scan", "/api/reports/latest", "/api/statistics", "/api/telemetry"):
               response = client.get(path)
               assert response.status_code == 200, (path, response.status_code, response.get_data(as_text=True))
+
+          scan = client.get("/api/scan").get_json()
+          assert scan["status"] == "success"
+          assert scan["data_status"] == "no_verified_data_loaded"
+          assert scan["count"] == 0
 
           bad = client.post("/api/entities", json={"entities": [{"id": "missing-required-fields"}]})
           assert bad.status_code == 400
@@ -108,7 +113,24 @@ jobs:
           assert created.status_code == 200
           scan = client.get("/api/scan").get_json()
           assert scan["summary"]["verified_entities"] == 1
-          assert scan["findings"][0]["entity"]["id"] == "verified:workflow-smoke"
+          assert scan["anomalies"][0]["entity"]["id"] == "verified:workflow-smoke"
+
+          anomaly_id = scan["anomalies"][0]["id"]
+          report = client.get(f"/api/anomaly/{anomaly_id}")
+          assert report.status_code == 200
+          assert report.get_json()["report"]["id"] == anomaly_id
+
+          socket_client = socketio.test_client(app)
+          assert socket_client.is_connected()
+          received = socket_client.get_received()
+          assert any(event["name"] == "connection_status" for event in received), received
+          socket_client.emit("subscribe_anomalies")
+          received = socket_client.get_received()
+          assert any(event["name"] == "anomaly_snapshot" for event in received), received
+          socket_client.emit("request_scan")
+          received = socket_client.get_received()
+          assert any(event["name"] == "scan_result" for event in received), received
+          socket_client.disconnect()
           PY
 
       - name: Validate Gunicorn entrypoint

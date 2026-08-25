@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ from tempfile import NamedTemporaryFile
 from typing import Any
 
 from flask import Flask, Response, jsonify, request, send_from_directory
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
@@ -33,6 +36,9 @@ DATA_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "data")).resolve()
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="/static")
     app.config["JSON_SORT_KEYS"] = False
+    cors_origins = _configured_cors_origins()
+    if cors_origins:
+        CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 
     @app.after_request
     def apply_security_headers(response: Response) -> Response:
@@ -42,7 +48,8 @@ def create_app() -> Flask:
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'",
+            "img-src 'self' data:; connect-src 'self' ws: wss:; "
+            "base-uri 'self'; frame-ancestors 'none'",
         )
         if request.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
@@ -125,15 +132,32 @@ def create_app() -> Flask:
 
     @app.get("/api/scan")
     def scan():
-        entities, patterns = _load_runtime_data()
-        findings = run_scan(entities, patterns)
-        return jsonify({"ok": True, **build_report(findings, len(patterns))})
+        report = _build_report_payload()
+        return jsonify(
+            {
+                **report,
+                "ok": True,
+                "status": "success",
+                "data_status": report["status"],
+                "count": len(report["findings"]),
+                "anomalies": report["findings"][:50],
+            }
+        )
+
+    @app.get("/api/anomaly/<anomaly_id>")
+    def get_anomaly(anomaly_id: str):
+        report = _find_anomaly_report(anomaly_id)
+        if report is None:
+            return jsonify({"ok": False, "status": "error", "message": "anomaly not found"}), 404
+        return jsonify({"ok": True, "status": "success", "report": report})
+
+    @app.get("/api/statistics")
+    def get_statistics():
+        return jsonify({"ok": True, "status": "success", "statistics": _build_statistics_payload()})
 
     @app.get("/api/reports/latest")
     def latest_report():
-        entities, patterns = _load_runtime_data()
-        findings = run_scan(entities, patterns)
-        return jsonify({"ok": True, "report": build_report(findings, len(patterns))})
+        return jsonify({"ok": True, "report": _build_report_payload()})
 
     @app.get("/api/telemetry")
     def telemetry():
@@ -160,8 +184,135 @@ def create_app() -> Flask:
     return app
 
 
+def configure_socketio(app: Flask) -> SocketIO:
+    socketio = SocketIO(
+        app,
+        async_mode="threading",
+        cors_allowed_origins=_configured_cors_origins(),
+    )
+
+    @socketio.on("connect")
+    def handle_connect():
+        app.logger.info("SocketIO client connected: %s", request.sid)
+        emit(
+            "connection_status",
+            {
+                "status": "connected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "statistics": _build_statistics_payload(),
+            },
+        )
+
+    @socketio.on("subscribe_anomalies")
+    def handle_subscribe():
+        # Emit the current verified snapshot immediately. The app does not
+        # fabricate real-time findings when no verified data has been loaded.
+        report = _build_report_payload()
+        emit(
+            "anomaly_snapshot",
+            {
+                "status": report["status"],
+                "count": len(report["findings"]),
+                "anomalies": report["findings"][:50],
+                "timestamp": report["generated_at"],
+            },
+        )
+
+    @socketio.on("request_scan")
+    def handle_request_scan():
+        emit("scan_result", _build_report_payload())
+
+    @socketio.on("disconnect")
+    def handle_disconnect():
+        app.logger.info("SocketIO client disconnected: %s", request.sid)
+
+    return socketio
+
+
 def _load_runtime_data():
     return load_entities(DATA_DIR), load_patterns(DATA_DIR)
+
+
+def _build_report_payload() -> dict[str, Any]:
+    entities, patterns = _load_runtime_data()
+    findings = run_scan(entities, patterns)
+    report = build_report(findings, len(patterns))
+    for finding in report["findings"]:
+        finding["id"] = _stable_anomaly_id(finding)
+    return report
+
+
+def _build_statistics_payload() -> dict[str, Any]:
+    report = _build_report_payload()
+    severity_breakdown: dict[str, int] = {}
+    for finding in report["findings"]:
+        risk_band = finding.get("forensics", {}).get("risk_band", "unknown")
+        severity_breakdown[risk_band] = severity_breakdown.get(risk_band, 0) + 1
+
+    return {
+        "total_entities": report["summary"]["verified_entities"],
+        "anomalies_today": len([finding for finding in report["findings"] if finding["score"] > 0]),
+        "severity_breakdown": severity_breakdown,
+        "priorities": report["summary"]["priorities"],
+        "highest_score": report["summary"]["highest_score"],
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _find_anomaly_report(anomaly_id: str) -> dict[str, Any] | None:
+    report = _build_report_payload()
+    for finding in report["findings"]:
+        if finding["id"].lower() == anomaly_id.lower() or finding["entity"]["id"] == anomaly_id:
+            return {
+                "id": finding["id"],
+                "summary": f"{finding['priority']} anomaly report for {finding['entity']['name']}",
+                "entity": finding["entity"],
+                "score": finding["score"],
+                "priority": finding["priority"],
+                "forensics": finding["forensics"],
+                "timeline": [finding["entity"]["observed_at"], report["generated_at"]],
+                "pattern_hits": finding["pattern_hits"],
+                "recommendations": _recommendations_for_finding(finding),
+            }
+    return None
+
+
+def _stable_anomaly_id(finding: dict[str, Any]) -> str:
+    entity = finding.get("entity", {})
+    fingerprint = "|".join(
+        [
+            str(entity.get("id", "")),
+            str(entity.get("observed_at", "")),
+            str(finding.get("priority", "")),
+            str(finding.get("score", "")),
+        ]
+    )
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:12].upper()
+    return f"ANOM-{digest}"
+
+
+def _recommendations_for_finding(finding: dict[str, Any]) -> list[str]:
+    if finding["priority"] == "P1":
+        return [
+            "Validate source telemetry against the original public record.",
+            "Escalate to the designated analyst queue for immediate review.",
+            "Preserve the current entity metrics and pattern-hit trace.",
+        ]
+    if finding["priority"] in {"P2", "P3"}:
+        return [
+            "Review the strongest contributing pattern hit.",
+            "Refresh verified telemetry before taking external action.",
+        ]
+    return ["Continue monitoring until verified metrics cross an escalation threshold."]
+
+
+def _configured_cors_origins() -> list[str] | str | None:
+    raw_origins = os.environ.get("APP_CORS_ORIGINS", "").strip()
+    if not raw_origins:
+        return None
+    if raw_origins == "*":
+        return "*"
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
 
 def _write_entities(entities) -> None:
@@ -181,10 +332,11 @@ def _write_entities(entities) -> None:
 
 
 app = create_app()
+socketio = configure_socketio(app)
 
 
 if __name__ == "__main__":
     host = os.environ.get("APP_HOST", "0.0.0.0")
     port = int(os.environ.get("APP_PORT", "8080"))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(host=host, port=port, debug=debug)
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
