@@ -11,3 +11,7 @@ payout-orchestrator/node_modules/
 payout-orchestrator/dist/
 payout-orchestrator/.env
 payout-orchestrator/*.log
+.t1-run/
+venv/
+__pycache__/
+*.pyc

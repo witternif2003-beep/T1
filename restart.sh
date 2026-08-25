@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
+# Thin wrapper — prefer: ./cli restart [scanner|stock|payout|all]
 set -euo pipefail
-DIR="$HOME/t1-payout-app-root"
-PORT="${1:-8091}"
-"$DIR/stop.sh" "$PORT" || true
-sleep 1
-"$DIR/start.sh" "$PORT"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$DIR/cli" restart "${1:-scanner}"

@@ -1,47 +1,29 @@
-# Solana Payout Drop Console
+# T1 — Solana / stock surge scanners + payout console
 
-This folder contains a standalone, self-contained web app for verifiable Solana Devnet SPL-token payouts to a fixed recipient wallet:
+Vite + React monorepo. Use the Cursor-friendly `./cli` instead of home-directory copies, systemd, or a Python `venv`/`app.py` flow.
 
-- Fixed recipient wallet: `HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG`
-- Browser-wallet approval flow
-- Associated Token Account preview for the recipient
-- Checked SPL token transfer flow
-- Transaction verification panel
-
-## Files
-
-- `index.html` — standalone single-file web app
-- `start.sh` — local static server start helper on port `8091`
-- `stop.sh` — stop helper
-- `restart.sh` — restart helper
-- `t1-payout-app-root.service` — example `systemd --user` unit
-
-## Local usage
+## Run in Cursor
 
 ```bash
-cd solana-payout-drop-console
-python3 -m http.server 8091
+./cli install
+./cli start scanner          # http://127.0.0.1:5173/T1/
+./cli start stock            # http://127.0.0.1:5174/T1/stock/
+./cli start payout           # http://127.0.0.1:5175/T1/solana-payout-drop-console/
+./cli status
+./cli stop all
 ```
 
-Then open:
+`start.sh` / `stop.sh` / `restart.sh` are thin wrappers around `./cli`.
 
-- `http://localhost:8091/`
+| App | Directory | Dev URL |
+|-----|-----------|---------|
+| Solana Surge Scanner | `/` (repo root) | `http://127.0.0.1:5173/T1/` |
+| NYSE Penny Surge Detector | `stock/` | `http://127.0.0.1:5174/T1/stock/` |
+| Payout Drop Console | `solana-payout-drop-console/` | `http://127.0.0.1:5175/T1/solana-payout-drop-console/` |
+| Payout orchestrator (backend) | `payout-orchestrator/` | see that folder’s README |
 
-## systemd --user install
+## Payout console notes
 
-```bash
-mkdir -p ~/.config/systemd/user
-cp t1-payout-app-root.service ~/.config/systemd/user/t1-payout-app-root.service
-systemctl --user daemon-reload
-systemctl --user enable t1-payout-app-root.service
-systemctl --user start t1-payout-app-root.service
-```
+Devnet SPL transfers to fixed recipient `HrcLRCSvzTeGt5QYAuUzNXdX3ss1zSmnV4NRdB9Zu4VG`. You still need a connected Devnet wallet, the SPL mint, source token balance, and a wallet signature for live sends.
 
-## Runtime notes
-
-The app is designed for Devnet-first testing. To send a live test payout, you still need:
-
-- a connected Devnet wallet
-- the exact custom SPL mint address
-- a source token account with enough balance
-- wallet signature approval at runtime
+`t1-payout-app-root.service` files are documentation-only systemd examples and are not used by `./cli`.
