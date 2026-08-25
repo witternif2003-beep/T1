@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# Cursor-friendly CLI for the T1 monorepo.
+# Replaces $HOME/t1-payout-app-root + systemd + python http.server copies.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_DIR="${ROOT}/.t1-run"
+mkdir -p "$RUN_DIR"
+
+usage() {
+  cat <<'EOF'
+Usage: ./cli <command> [app]
+
+Commands:
+  install          npm ci for root, stock, payout console, orchestrator
+  build            production build for all packages
+  start  [app]     start Vite (or preview) in the background
+  stop   [app]     stop a running app
+  restart [app]    stop then start
+  status [app]     show PID / URL
+  help             show this help
+
+Apps (default: scanner):
+  scanner   Solana Surge Scanner     http://127.0.0.1:5173/T1/
+  stock     NYSE Penny Surge Detector http://127.0.0.1:5174/T1/stock/
+  payout    Payout Drop Console      http://127.0.0.1:5175/T1/solana-payout-drop-console/
+  all       scanner + stock + payout
+
+Examples (Cursor / Cloud Agent):
+  ./cli install
+  ./cli start scanner
+  ./cli status
+  ./cli stop scanner
+EOF
+}
+
+resolve_app() {
+  local raw="${1:-scanner}"
+  # Accept legacy port-only args from old start.sh (e.g. 8091) as scanner.
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    echo "scanner"
+    return
+  fi
+  case "$raw" in
+    scanner|stock|payout|all) echo "$raw" ;;
+    *)
+      echo "Unknown app: $raw" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+app_meta() {
+  # Sets: APP_DIR PORT URL DEV_CMD
+  local app="$1"
+  case "$app" in
+    scanner)
+      APP_DIR="$ROOT"
+      PORT=5173
+      URL="http://127.0.0.1:${PORT}/T1/"
+      DEV_CMD=(npm run dev -- --host 127.0.0.1 --port "$PORT")
+      ;;
+    stock)
+      APP_DIR="$ROOT/stock"
+      PORT=5174
+      URL="http://127.0.0.1:${PORT}/T1/stock/"
+      DEV_CMD=(npm run dev -- --host 127.0.0.1 --port "$PORT")
+      ;;
+    payout)
+      APP_DIR="$ROOT/solana-payout-drop-console"
+      PORT=5175
+      URL="http://127.0.0.1:${PORT}/T1/solana-payout-drop-console/"
+      DEV_CMD=(npm run dev -- --host 127.0.0.1 --port "$PORT")
+      ;;
+    *)
+      echo "app_meta: invalid app $app" >&2
+      exit 1
+      ;;
+  esac
+}
+
+pid_file() { echo "${RUN_DIR}/${1}.pid"; }
+log_file() { echo "${RUN_DIR}/${1}.log"; }
+
+is_running() {
+  local app="$1"
+  local pf pid
+  pf="$(pid_file "$app")"
+  [[ -f "$pf" ]] || return 1
+  pid="$(cat "$pf" 2>/dev/null || true)"
+  [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+cmd_install() {
+  echo "Installing dependencies…"
+  (cd "$ROOT" && npm ci)
+  (cd "$ROOT/stock" && npm ci)
+  (cd "$ROOT/solana-payout-drop-console" && npm ci)
+  (cd "$ROOT/payout-orchestrator" && npm ci)
+  echo "Install complete."
+}
+
+cmd_build() {
+  echo "Building all packages…"
+  (cd "$ROOT" && npm run build)
+  (cd "$ROOT/stock" && npm run build)
+  (cd "$ROOT/solana-payout-drop-console" && npm run build)
+  (cd "$ROOT/payout-orchestrator" && npm run build)
+  echo "Build complete."
+}
+
+cmd_start_one() {
+  local app="$1"
+  app_meta "$app"
+  if is_running "$app"; then
+    echo "Already running: $app (PID $(cat "$(pid_file "$app")")) → $URL"
+    return 0
+  fi
+  local existing
+  existing="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+  if [[ -n "$existing" ]] && kill -0 "$existing" 2>/dev/null; then
+    echo "$existing" >"$(pid_file "$app")"
+    echo "Already listening on :$PORT (PID $existing) → $URL"
+    return 0
+  fi
+  if [[ ! -d "$APP_DIR/node_modules" ]]; then
+    echo "Missing node_modules for $app. Run: ./cli install" >&2
+    exit 1
+  fi
+  local lf pf
+  lf="$(log_file "$app")"
+  pf="$(pid_file "$app")"
+  (
+    cd "$APP_DIR"
+    nohup "${DEV_CMD[@]}" >"$lf" 2>&1 &
+    echo $! >"$pf"
+  )
+  # Wait briefly for listen or failure.
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if lsof -tiTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "Started $app (PID $(cat "$pf")) → $URL"
+      echo "Logs: $lf"
+      return 0
+    fi
+    if ! is_running "$app"; then
+      echo "Failed to start $app. Last log lines:" >&2
+      tail -n 40 "$lf" >&2 || true
+      rm -f "$pf"
+      exit 1
+    fi
+    sleep 0.4
+  done
+  echo "Started $app (PID $(cat "$pf")) — port not open yet; check $lf"
+  echo "Expected URL: $URL"
+}
+
+kill_port_listeners() {
+  local port="$1"
+  local pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -z "$pids" ]]; then
+    return 0
+  fi
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  sleep 0.3
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$pids" ]]; then
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+  fi
+}
+
+cmd_stop_one() {
+  local app="$1"
+  app_meta "$app"
+  local pf pid
+  pf="$(pid_file "$app")"
+  pid=""
+  if [[ -f "$pf" ]]; then
+    pid="$(cat "$pf" 2>/dev/null || true)"
+  fi
+  if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+    # Kill the recorded process and its children (npm → vite → esbuild).
+    pkill -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+    sleep 0.2
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+    echo "Stopped $app (PID $pid)"
+  else
+    echo "No recorded $app PID; clearing port $PORT if needed"
+  fi
+  kill_port_listeners "$PORT"
+  rm -f "$pf"
+}
+
+cmd_status_one() {
+  local app="$1"
+  app_meta "$app"
+  if is_running "$app"; then
+    echo "$app  running  PID=$(cat "$(pid_file "$app")")  $URL"
+  elif lsof -tiTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "$app  listening  PID=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN | head -n1)  $URL"
+  else
+    echo "$app  stopped  (would serve $URL)"
+  fi
+}
+
+cmd_start() {
+  local app
+  app="$(resolve_app "${1:-scanner}")"
+  if [[ "$app" == "all" ]]; then
+    cmd_start_one scanner
+    cmd_start_one stock
+    cmd_start_one payout
+  else
+    cmd_start_one "$app"
+  fi
+}
+
+cmd_stop() {
+  local app
+  app="$(resolve_app "${1:-scanner}")"
+  if [[ "$app" == "all" ]]; then
+    cmd_stop_one scanner
+    cmd_stop_one stock
+    cmd_stop_one payout
+  else
+    cmd_stop_one "$app"
+  fi
+}
+
+cmd_restart() {
+  local app
+  app="$(resolve_app "${1:-scanner}")"
+  cmd_stop "$app"
+  sleep 1
+  cmd_start "$app"
+}
+
+cmd_status() {
+  local app="${1:-}"
+  if [[ -z "$app" || "$app" == "all" ]]; then
+    cmd_status_one scanner
+    cmd_status_one stock
+    cmd_status_one payout
+  else
+    cmd_status_one "$(resolve_app "$app")"
+  fi
+}
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+  case "$cmd" in
+    install) cmd_install "$@" ;;
+    build)   cmd_build "$@" ;;
+    start)   cmd_start "$@" ;;
+    stop)    cmd_stop "$@" ;;
+    restart) cmd_restart "$@" ;;
+    status)  cmd_status "$@" ;;
+    help|-h|--help) usage ;;
+    *)
+      echo "Unknown command: $cmd" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
