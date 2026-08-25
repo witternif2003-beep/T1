@@ -122,6 +122,9 @@ jobs:
           assert scan["anomalies"][0]["chain_of_custody_hash"]
           assert any(hit["vector_id"] == "FV-001" for hit in scan["anomalies"][0]["forensic_vectors"])
           assert any(hit["vector_id"] == "FV-012" for hit in scan["anomalies"][0]["forensic_vectors"])
+          assert scan["anomalies"][0]["forensics"]["legal_reference_hints"]
+          assert scan["anomalies"][0]["forensics"]["sar_screen"]["weighted_score"] >= scan["anomalies"][0]["score"]
+          assert scan["anomalies"][0]["forensics"]["chain_of_custody"]["hash"] == scan["anomalies"][0]["chain_of_custody_hash"]
 
           anomaly_id = scan["anomalies"][0]["id"]
           report = client.get(f"/api/anomaly/{anomaly_id}")

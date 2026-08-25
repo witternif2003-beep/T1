@@ -86,3 +86,7 @@ All records are validated before they are written to `data/entities.json`.
 Optional `attributes` fields are scanned by the forensic-vector engine. Reports
 include vector hits and a chain-of-custody hash, but the app never creates
 simulated anomaly records.
+
+Forensic output may include statutory reference hints and SAR-style category
+weights derived from matched vector categories. These fields are screening aids
+only and are not legal determinations.

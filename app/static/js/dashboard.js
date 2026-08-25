@@ -79,7 +79,11 @@
           Confidence ${formatNumber((finding.confidence || 0) * 100)}% /
           Integrity ${escapeHtml(finding.forensics?.integrity || "unknown")} /
           Risk ${escapeHtml(finding.forensics?.risk_band || "unknown")} /
+          SAR ${formatNumber(finding.forensics?.sar_screen?.weighted_score || finding.score)} /
           Custody ${escapeHtml((finding.chain_of_custody_hash || "").slice(0, 12))}
+        </div>
+        <div class="meta">
+          References: ${escapeHtml((finding.forensics?.legal_reference_hints || []).join(", ") || "none")}
         </div>
         <div class="hits">${hitMarkup || '<span class="hit">No active metric pattern hits</span>'}</div>
         <div class="hits">${vectorMarkup || '<span class="hit">No forensic vector hits</span>'}</div>
