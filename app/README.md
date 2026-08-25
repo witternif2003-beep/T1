@@ -8,6 +8,7 @@ This directory contains a standalone Flask web app with:
 - forensic report output
 - static dashboard UI
 - live server-sent telemetry
+- verified-data SocketIO anomaly events
 - Docker packaging
 
 The app does not ship mock findings. `data/entities.json` starts empty, and
@@ -90,3 +91,7 @@ simulated anomaly records.
 Forensic output may include statutory reference hints and SAR-style category
 weights derived from matched vector categories. These fields are screening aids
 only and are not legal determinations.
+
+Realtime `new_anomaly` events are emitted only when the current verified scan
+contains scored findings. The telemetry engine does not inject random entities,
+coordinates, or anomaly types.

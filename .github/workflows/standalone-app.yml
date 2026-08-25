@@ -138,6 +138,7 @@ jobs:
           socket_client.emit("subscribe_anomalies")
           received = socket_client.get_received()
           assert any(event["name"] == "anomaly_snapshot" for event in received), received
+          assert any(event["name"] == "new_anomaly" for event in received), received
           socket_client.emit("request_scan")
           received = socket_client.get_received()
           assert any(event["name"] == "scan_result" for event in received), received

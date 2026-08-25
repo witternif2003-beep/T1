@@ -27,10 +27,11 @@ from src.data_ingestion import (
     normalize_entity,
 )
 from src.report_generator import build_report
-from src.realtime_telemetry import telemetry_snapshot, telemetry_stream
+from src.realtime_telemetry import RealtimeTelemetry, telemetry_snapshot, telemetry_stream
 
 
 DATA_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "data")).resolve()
+realtime_telemetry = RealtimeTelemetry()
 
 
 def create_app() -> Flask:
@@ -217,6 +218,9 @@ def configure_socketio(app: Flask) -> SocketIO:
                 "timestamp": report["generated_at"],
             },
         )
+        anomaly_event = realtime_telemetry.generate_anomaly(report)
+        if anomaly_event:
+            emit("new_anomaly", anomaly_event)
 
     @socketio.on("request_scan")
     def handle_request_scan():
@@ -244,19 +248,7 @@ def _build_report_payload() -> dict[str, Any]:
 
 def _build_statistics_payload() -> dict[str, Any]:
     report = _build_report_payload()
-    severity_breakdown: dict[str, int] = {}
-    for finding in report["findings"]:
-        risk_band = finding.get("forensics", {}).get("risk_band", "unknown")
-        severity_breakdown[risk_band] = severity_breakdown.get(risk_band, 0) + 1
-
-    return {
-        "total_entities": report["summary"]["verified_entities"],
-        "anomalies_today": len([finding for finding in report["findings"] if finding["score"] > 0]),
-        "severity_breakdown": severity_breakdown,
-        "priorities": report["summary"]["priorities"],
-        "highest_score": report["summary"]["highest_score"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    return realtime_telemetry.get_statistics(report)
 
 
 def _find_anomaly_report(anomaly_id: str) -> dict[str, Any] | None:
