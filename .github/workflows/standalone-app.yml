@@ -147,6 +147,18 @@ jobs:
           received = socket_client.get_received()
           assert any(event["name"] == "scan_result" for event in received), received
           socket_client.disconnect()
+
+          stream = client.get("/api/anomalies/stream", buffered=False)
+          chunks = []
+          for chunk in stream.response:
+              text = chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
+              chunks.append(text)
+              if "event: statistics" in "".join(chunks):
+                  break
+          stream_text = "".join(chunks)
+          assert "event: new_anomaly" in stream_text
+          assert "verified:workflow-smoke" in stream_text
+          assert "event: statistics" in stream_text
           PY
 
       - name: Validate Gunicorn entrypoint

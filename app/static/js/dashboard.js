@@ -3,6 +3,7 @@
     report: null,
     health: null,
     loading: false,
+    liveEvents: [],
   };
 
   function formatNumber(value) {
@@ -16,7 +17,7 @@
 
   function renderStats(report, statisticsPayload) {
     const summary = report?.summary || {};
-    const statistics = statisticsPayload?.statistics || {};
+    const statistics = statisticsPayload?.statistics || statisticsPayload || {};
     setText("[data-stat-entities]", formatNumber(summary.verified_entities));
     setText("[data-stat-patterns]", formatNumber(summary.patterns_loaded));
     setText("[data-stat-p1]", formatNumber(summary.priorities?.P1));
@@ -98,10 +99,10 @@
       fragment.appendChild(card);
     });
     container.appendChild(fragment);
-    renderChart(findings);
+    renderChart(state.liveEvents.length ? state.liveEvents : findings);
   }
 
-  function renderChart(findings) {
+  function renderChart(items) {
     const canvas = document.querySelector("#anomalyChart");
     if (!canvas) return;
 
@@ -112,8 +113,8 @@
     context.fillStyle = "rgba(255, 255, 255, 0.04)";
     context.fillRect(0, 0, width, height);
 
-    const topFindings = (findings || []).slice(0, 8);
-    if (!topFindings.length) {
+    const chartItems = (items || []).slice(0, 8);
+    if (!chartItems.length) {
       context.fillStyle = "#94a3b8";
       context.font = "18px sans-serif";
       context.fillText("No verified anomaly data loaded", 24, 48);
@@ -122,11 +123,11 @@
 
     const padding = 36;
     const barGap = 14;
-    const barWidth = (width - padding * 2 - barGap * (topFindings.length - 1)) / topFindings.length;
+    const barWidth = (width - padding * 2 - barGap * (chartItems.length - 1)) / chartItems.length;
     context.font = "13px sans-serif";
 
-    topFindings.forEach((finding, index) => {
-      const score = Math.max(0, Math.min(100, Number(finding.score) || 0));
+    chartItems.forEach((item, index) => {
+      const score = Math.max(0, Math.min(100, Number(item.score ?? item.severity) || 0));
       const barHeight = ((height - 88) * score) / 100;
       const x = padding + index * (barWidth + barGap);
       const y = height - padding - barHeight;
@@ -138,9 +139,51 @@
       context.fillStyle = "#edf4ff";
       context.fillText(String(Math.round(score)), x, y - 8);
       context.fillStyle = "#94a3b8";
-      const label = finding.entity?.name || finding.entity?.id || "entity";
+      const label = item.entity?.name || item.entity_name || item.entity?.id || item.id || "entity";
       context.fillText(label.slice(0, 14), x, height - 12);
     });
+  }
+
+  function addAnomalyToFeed(anomaly) {
+    const container = document.querySelector("#anomalyList");
+    if (!container || !anomaly) return;
+
+    const item = document.createElement("article");
+    item.className = "anomaly-item";
+    const severity = Number(anomaly.severity) || 0;
+    const severityClass = severity >= 80 ? "critical" : severity >= 60 ? "elevated" : "watch";
+    const flags = (anomaly.forensic_flags || [])
+      .slice(0, 8)
+      .map((flag) => `<span class="flag">${escapeHtml(flag)}</span>`)
+      .join("");
+    const coordinate = anomaly.coordinates?.[0];
+
+    item.innerHTML = `
+      <div class="anomaly-header">
+        <span class="anomaly-id">${escapeHtml(anomaly.id || "unknown")}</span>
+        <span class="anomaly-type">${escapeHtml(String(anomaly.type || "verified").toUpperCase())}</span>
+        <span class="anomaly-severity ${severityClass}">${formatNumber(severity)}%</span>
+      </div>
+      <div class="anomaly-details">
+        <div>Entity: ${escapeHtml(anomaly.entity_name || anomaly.entity_id || "unknown")}</div>
+        <div>Location: ${escapeHtml(coordinate ? `${coordinate.lat}, ${coordinate.lon}` : "none")}</div>
+        <div>Custody: ${escapeHtml((anomaly.chain_of_custody_hash || "").slice(0, 12))}</div>
+        <div class="forensic-flags">${flags || '<span class="flag">no flags</span>'}</div>
+      </div>
+      <div class="anomaly-timestamp">${escapeHtml(new Date(anomaly.timestamp).toLocaleString())}</div>
+    `;
+
+    container.prepend(item);
+    while (container.children.length > 50) {
+      container.removeChild(container.lastChild);
+    }
+  }
+
+  function updateChart(anomaly) {
+    if (!anomaly) return;
+    state.liveEvents.unshift(anomaly);
+    state.liveEvents = state.liveEvents.slice(0, 20);
+    renderChart(state.liveEvents);
   }
 
   function escapeHtml(value) {
@@ -205,9 +248,29 @@
     }
   }
 
+  function connectAnomalyStream() {
+    if (!("EventSource" in window)) return;
+    const source = new EventSource("/api/anomalies/stream");
+    source.onopen = () => {
+      setText("#connectionStatus", "connected");
+    };
+    source.addEventListener("new_anomaly", (event) => {
+      const anomaly = JSON.parse(event.data);
+      addAnomalyToFeed(anomaly);
+      updateChart(anomaly);
+    });
+    source.addEventListener("statistics", (event) => {
+      renderStats(state.report, JSON.parse(event.data));
+    });
+    source.onerror = () => {
+      setText("#connectionStatus", "reconnecting");
+    };
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     bindActions();
     refresh();
+    connectAnomalyStream();
     if (window.TelemetryClient) window.TelemetryClient.start();
   });
 })();

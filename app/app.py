@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sys
 from tempfile import NamedTemporaryFile
+import time
 from typing import Any
 
 from flask import Flask, Response, jsonify, request, send_from_directory
@@ -27,7 +28,7 @@ from src.data_ingestion import (
     normalize_entity,
 )
 from src.report_generator import ReportGenerator, build_report
-from src.realtime_telemetry import RealtimeTelemetry, telemetry_snapshot, telemetry_stream
+from src.realtime_telemetry import RealtimeTelemetry, sse_format, telemetry_snapshot, telemetry_stream
 
 
 DATA_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "data")).resolve()
@@ -188,6 +189,25 @@ def create_app() -> Flask:
                 return snapshot
 
         response = Response(telemetry_stream(snapshot_factory), mimetype="text/event-stream")
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response
+
+    @app.get("/api/anomalies/stream")
+    def stream_anomalies():
+        def event_stream():
+            while True:
+                try:
+                    report = _build_report_payload()
+                    anomaly_event = realtime_telemetry.generate_anomaly(report)
+                    if anomaly_event:
+                        yield sse_format("new_anomaly", anomaly_event)
+                    yield sse_format("statistics", realtime_telemetry.get_statistics(report))
+                except DataValidationError as exc:
+                    yield sse_format("error", {"error": str(exc), "type": "data_validation_error"})
+                time.sleep(5)
+
+        response = Response(event_stream(), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache"
         response.headers["X-Accel-Buffering"] = "no"
         return response
