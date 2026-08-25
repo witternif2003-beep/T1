@@ -26,12 +26,13 @@ from src.data_ingestion import (
     load_patterns,
     normalize_entity,
 )
-from src.report_generator import build_report
+from src.report_generator import ReportGenerator, build_report
 from src.realtime_telemetry import RealtimeTelemetry, telemetry_snapshot, telemetry_stream
 
 
 DATA_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "data")).resolve()
 realtime_telemetry = RealtimeTelemetry()
+report_generator = ReportGenerator()
 
 
 def create_app() -> Flask:
@@ -150,7 +151,16 @@ def create_app() -> Flask:
         report = _find_anomaly_report(anomaly_id)
         if report is None:
             return jsonify({"ok": False, "status": "error", "message": "anomaly not found"}), 404
+        if request.args.get("format") == "markdown":
+            return Response(report_generator.generate_markdown(report), mimetype="text/markdown")
         return jsonify({"ok": True, "status": "success", "report": report})
+
+    @app.get("/api/anomaly/<anomaly_id>/markdown")
+    def get_anomaly_markdown(anomaly_id: str):
+        report = _find_anomaly_report(anomaly_id)
+        if report is None:
+            return jsonify({"ok": False, "status": "error", "message": "anomaly not found"}), 404
+        return Response(report_generator.generate_markdown(report), mimetype="text/markdown")
 
     @app.get("/api/statistics")
     def get_statistics():
@@ -255,17 +265,7 @@ def _find_anomaly_report(anomaly_id: str) -> dict[str, Any] | None:
     report = _build_report_payload()
     for finding in report["findings"]:
         if finding["id"].lower() == anomaly_id.lower() or finding["entity"]["id"] == anomaly_id:
-            return {
-                "id": finding["id"],
-                "summary": f"{finding['priority']} anomaly report for {finding['entity']['name']}",
-                "entity": finding["entity"],
-                "score": finding["score"],
-                "priority": finding["priority"],
-                "forensics": finding["forensics"],
-                "timeline": [finding["entity"]["observed_at"], report["generated_at"]],
-                "pattern_hits": finding["pattern_hits"],
-                "recommendations": _recommendations_for_finding(finding),
-            }
+            return report_generator.generate_report(finding, generated_at=report["generated_at"])
     return None
 
 

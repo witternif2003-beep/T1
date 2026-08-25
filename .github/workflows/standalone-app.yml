@@ -130,6 +130,10 @@ jobs:
           report = client.get(f"/api/anomaly/{anomaly_id}")
           assert report.status_code == 200
           assert report.get_json()["report"]["id"] == anomaly_id
+          markdown = client.get(f"/api/anomaly/{anomaly_id}/markdown")
+          assert markdown.status_code == 200
+          assert markdown.content_type.startswith("text/markdown")
+          assert anomaly_id in markdown.get_data(as_text=True)
 
           socket_client = socketio.test_client(app)
           assert socket_client.is_connected()

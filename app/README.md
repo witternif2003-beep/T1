@@ -95,3 +95,8 @@ only and are not legal determinations.
 Realtime `new_anomaly` events are emitted only when the current verified scan
 contains scored findings. The telemetry engine does not inject random entities,
 coordinates, or anomaly types.
+
+Detailed anomaly reports are available as JSON at `/api/anomaly/<id>` and as
+Markdown at `/api/anomaly/<id>/markdown` or `/api/anomaly/<id>?format=markdown`.
+Report content is generated from the matched finding, forensic vectors, and
+chain-of-custody metadata only.
