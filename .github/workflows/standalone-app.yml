@@ -1,0 +1,130 @@
+name: Standalone App Build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/standalone-app.yml"
+      - ".python-version"
+      - "app/**"
+  pull_request:
+    paths:
+      - ".github/workflows/standalone-app.yml"
+      - ".python-version"
+      - "app/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.14.7"
+  PIP_AUDIT_VERSION: "2.10.1"
+
+jobs:
+  build:
+    name: Verify and package Flask deployment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up latest stable Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
+          cache: "pip"
+          cache-dependency-path: app/requirements.lock
+
+      - name: Install locked runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r app/requirements.lock
+          python -m pip install "pip-audit==${PIP_AUDIT_VERSION}"
+
+      - name: Audit dependency advisories
+        run: python -m pip_audit -r app/requirements.lock --progress-spinner off
+
+      - name: Print package license metadata
+        run: |
+          python - <<'PY'
+          from importlib.metadata import metadata
+
+          for package in ("Flask", "gunicorn"):
+              meta = metadata(package)
+              print(f"{package}: {meta.get('License') or meta.get('License-Expression') or 'license metadata not declared'}")
+              for classifier in meta.get_all("Classifier", []):
+                  if classifier.startswith("License"):
+                      print(f"  {classifier}")
+          PY
+
+      - name: Compile Python sources
+        run: python -m compileall app
+
+      - name: Smoke test Flask API
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import tempfile
+
+          data_dir = Path(tempfile.mkdtemp(prefix="anomaly-data-"))
+          shutil.copyfile("app/data/anomaly_patterns.json", data_dir / "anomaly_patterns.json")
+          (data_dir / "entities.json").write_text(
+              json.dumps({"schema_version": "1.0", "updated_at": None, "entities": []}) + "\n",
+              encoding="utf-8",
+          )
+          os.environ["APP_DATA_DIR"] = str(data_dir)
+
+          from app.app import app
+
+          client = app.test_client()
+          for path in ("/", "/api/health", "/api/entities", "/api/patterns", "/api/scan", "/api/reports/latest", "/api/telemetry"):
+              response = client.get(path)
+              assert response.status_code == 200, (path, response.status_code, response.get_data(as_text=True))
+
+          bad = client.post("/api/entities", json={"entities": [{"id": "missing-required-fields"}]})
+          assert bad.status_code == 400
+
+          record = {
+              "id": "verified:workflow-smoke",
+              "name": "Workflow Verification Record",
+              "category": "ci",
+              "source": {"name": "GitHub Actions", "url": "https://github.com"},
+              "observed_at": "2026-08-25T02:20:00Z",
+              "metrics": {
+                  "acceleration_index": 4.0,
+                  "deviation_sigma": 6.0,
+                  "source_confidence": 0.95,
+                  "impact_score": 95,
+              },
+              "tags": ["verified"],
+          }
+          created = client.post("/api/entities", json={"entities": [record]})
+          assert created.status_code == 200
+          scan = client.get("/api/scan").get_json()
+          assert scan["summary"]["verified_entities"] == 1
+          assert scan["findings"][0]["entity"]["id"] == "verified:workflow-smoke"
+          PY
+
+      - name: Validate Gunicorn entrypoint
+        run: python -m gunicorn --check-config --chdir app app:app
+
+      - name: Build deployment artifact
+        run: |
+          tar \
+            --exclude="__pycache__" \
+            --exclude="*.pyc" \
+            -czf standalone-anomaly-app.tar.gz \
+            -C app .
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: standalone-anomaly-app
+          path: standalone-anomaly-app.tar.gz
+          if-no-files-found: error
