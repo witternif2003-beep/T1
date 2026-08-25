@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-08-25T00:00:00+00:00",
+  "patterns": [
+    {
+      "id": "acceleration-index",
+      "name": "Acceleration Index",
+      "metric": "acceleration_index",
+      "comparator": "gte",
+      "threshold": 2.0,
+      "weight": 0.3,
+      "description": "Current movement is at least 2x the validated baseline."
+    },
+    {
+      "id": "deviation-sigma",
+      "name": "Deviation Sigma",
+      "metric": "deviation_sigma",
+      "comparator": "gte",
+      "threshold": 3.0,
+      "weight": 0.25,
+      "description": "Signal is at least three standard deviations from baseline."
+    },
+    {
+      "id": "confidence",
+      "name": "Source Confidence",
+      "metric": "source_confidence",
+      "comparator": "gte",
+      "threshold": 0.75,
+      "weight": 0.2,
+      "description": "Source confidence meets the verified-data threshold."
+    },
+    {
+      "id": "impact-score",
+      "name": "Impact Score",
+      "metric": "impact_score",
+      "comparator": "gte",
+      "threshold": 70.0,
+      "weight": 0.15,
+      "description": "Potential downstream impact is materially elevated."
+    },
+    {
+      "id": "fresh-observation",
+      "name": "Fresh Observation",
+      "metric": "observed_age_seconds",
+      "comparator": "lte",
+      "threshold": 900.0,
+      "weight": 0.1,
+      "description": "Observation was recorded within the last fifteen minutes."
+    }
+  ]
+}

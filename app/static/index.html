@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Standalone verified-data anomaly surge detector" />
+    <title>Standalone Anomaly Surge Detector</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Verified data only / Admin telemetry</div>
+          <h1>Anomaly Surge Detector</h1>
+          <p class="lede">
+            A standalone Flask web app for validating entity telemetry, scoring anomaly patterns,
+            and streaming live service diagnostics. No mock findings are generated; the dashboard
+            stays empty until verified records are loaded.
+          </p>
+        </div>
+        <div class="actions">
+          <button class="button" type="button" data-action-refresh>Run scan</button>
+          <button class="button secondary" type="button" data-action-report>Generate report</button>
+        </div>
+      </section>
+
+      <section class="grid" aria-label="Scan summary">
+        <article class="panel">
+          <div class="stat-label">Verified entities</div>
+          <div class="stat-value" data-stat-entities>0</div>
+        </article>
+        <article class="panel">
+          <div class="stat-label">Patterns loaded</div>
+          <div class="stat-value" data-stat-patterns>0</div>
+        </article>
+        <article class="panel">
+          <div class="stat-label">P1 findings</div>
+          <div class="stat-value" data-stat-p1>0</div>
+        </article>
+        <article class="panel">
+          <div class="stat-label">Highest score</div>
+          <div class="stat-value" data-stat-highest>0</div>
+        </article>
+      </section>
+
+      <section class="panel wide">
+        <div class="section-title">
+          <div>
+            <h2>Findings</h2>
+            <p class="meta">
+              Status: <span data-refresh-state>Loading</span> /
+              Last update: <span data-last-update>pending</span>
+            </p>
+          </div>
+          <span class="status-pill">
+            <span class="dot" data-live-dot></span>
+            <span data-live-status>connecting</span>
+          </span>
+        </div>
+        <div class="notice" data-notice hidden></div>
+        <div class="findings" data-findings></div>
+      </section>
+
+      <section class="grid" aria-label="Diagnostics">
+        <article class="panel wide">
+          <div class="section-title">
+            <h2>Live telemetry</h2>
+          </div>
+          <pre data-telemetry>{}</pre>
+        </article>
+        <article class="panel wide">
+          <div class="section-title">
+            <h2>Latest report JSON</h2>
+          </div>
+          <pre data-report>Click "Generate report" to render the latest server report.</pre>
+        </article>
+      </section>
+
+      <p class="footer">
+        Load verified records with POST /api/entities or mount a replacement app/data/entities.json.
+        Required fields: id, name, category, source, observed_at, and numeric metrics.
+      </p>
+    </main>
+
+    <script src="/static/js/webSocket.js" defer></script>
+    <script src="/static/js/dashboard.js" defer></script>
+  </body>
+</html>
