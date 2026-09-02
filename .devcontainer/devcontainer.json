@@ -1,0 +1,4 @@
+{
+  "name": "T1",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22"
+}
