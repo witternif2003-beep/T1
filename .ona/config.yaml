@@ -1,0 +1,69 @@
+tasks:
+  install-dependencies:
+    name: Install dependencies
+    description: Install locked dependencies for every Node package in the repository
+    command: |
+      npm ci
+      npm ci --prefix stock
+      npm ci --prefix solana-payout-drop-console
+      npm ci --prefix payout-orchestrator
+    triggeredBy:
+      - manual
+      - postDevcontainerStart
+      - prebuild
+
+  build:
+    name: Build all packages
+    description: Compile each frontend and the payout orchestrator
+    command: |
+      npm run build
+      npm --prefix stock run build
+      npm --prefix solana-payout-drop-console run build
+      npm --prefix payout-orchestrator run build
+    dependsOn:
+      - install-dependencies
+    triggeredBy:
+      - manual
+
+services:
+  solana-scanner:
+    name: Solana Surge Scanner
+    description: Vite development server for the root Solana scanner
+    triggeredBy:
+      - manual
+      - postEnvironmentStart
+    commands:
+      start: |
+        ona environment port open 5173 --admission creator_only --name "Solana Surge Scanner"
+        export ONA_EXPOSED_HOST="$(ona environment port get 5173 -f URL | cut -c 9-)"
+        export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="$ONA_EXPOSED_HOST"
+        npm run dev -- --host 0.0.0.0 --port 5173
+      ready: curl -fsS http://localhost:5173/T1/ >/dev/null
+
+  stock-detector:
+    name: NYSE Stock Surge Detector
+    description: Vite development server for the stock surge detector
+    triggeredBy:
+      - manual
+      - postEnvironmentStart
+    commands:
+      start: |
+        ona environment port open 5174 --admission creator_only --name "NYSE Stock Surge Detector"
+        export ONA_EXPOSED_HOST="$(ona environment port get 5174 -f URL | cut -c 9-)"
+        export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="$ONA_EXPOSED_HOST"
+        npm run dev --prefix stock -- --host 0.0.0.0 --port 5174
+      ready: curl -fsS http://localhost:5174/T1/stock/ >/dev/null
+
+  payout-console:
+    name: Solana Payout Drop Console
+    description: Vite development server for the browser-wallet payout console
+    triggeredBy:
+      - manual
+      - postEnvironmentStart
+    commands:
+      start: |
+        ona environment port open 5175 --admission creator_only --name "Solana Payout Drop Console"
+        export ONA_EXPOSED_HOST="$(ona environment port get 5175 -f URL | cut -c 9-)"
+        export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="$ONA_EXPOSED_HOST"
+        npm run dev --prefix solana-payout-drop-console -- --host 0.0.0.0 --port 5175
+      ready: curl -fsS http://localhost:5175/T1/solana-payout-drop-console/ >/dev/null
